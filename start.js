@@ -89,7 +89,15 @@ const portaLivre = (porta) =>
 
 const desejada = Number(process.env.PORT) || 3000;
 let porta = desejada;
-for (let i = 0; i < 20 && !(await portaLivre(porta)); i++) porta = desejada + i + 1;
+
+// Numa hospedagem (Northflank, Render, Fly) a PORT vem definida pela
+// plataforma, e ela vai procurar o app exatamente nela. Trocar de porta ali
+// faria o servico subir num lugar onde ninguem olha e "falhar" sem erro.
+// Trocar de porta so faz sentido no computador de casa.
+const portaImposta = Boolean(process.env.PORT);
+if (!portaImposta) {
+  for (let i = 0; i < 20 && !(await portaLivre(porta)); i++) porta = desejada + i + 1;
+}
 
 if (porta !== desejada) {
   console.log(linha);

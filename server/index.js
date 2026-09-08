@@ -35,6 +35,30 @@ app.use(express.urlencoded({ extended: false })); // webhooks Twilio chegam como
 // Atras de proxy (Nginx, Railway, Render) o IP real vem no cabecalho.
 app.set('trust proxy', 1);
 
+/**
+ * Descobre o proprio endereco publico na primeira visita.
+ *
+ * Em hospedagem (Northflank, Render, Railway) a URL so existe depois do
+ * primeiro deploy, entao ninguem consegue preencher PUBLIC_BASE_URL antes.
+ * Sem ele, a busca funciona mas a ligacao cai no "alo" - falha silenciosa e
+ * dificil de entender. Aqui o servidor aprende o endereco pelo cabecalho da
+ * requisicao. Preencher PUBLIC_BASE_URL continua valendo e tem prioridade.
+ */
+app.use((req, _res, next) => {
+  if (!config.publicBaseUrl) {
+    const host = req.get('x-forwarded-host') || req.get('host') || '';
+    const ehLocal = /^(localhost|127\.|0\.0\.0\.0|\[::1\]|192\.168\.|10\.)/.test(host);
+    if (host && !ehLocal) {
+      const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+      config.publicBaseUrl = `${proto}://${host}`;
+      log('sistema', `endereco publico detectado automaticamente: ${config.publicBaseUrl}`);
+      console.log(`\n  Endereco publico detectado: ${config.publicBaseUrl}`);
+      console.log('  (para fixar, defina PUBLIC_BASE_URL nas variaveis de ambiente)\n');
+    }
+  }
+  next();
+});
+
 // Senha do painel: precisa vir ANTES das rotas que gastam dinheiro.
 instalarAuth(app);
 

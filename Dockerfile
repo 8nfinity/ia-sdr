@@ -3,8 +3,10 @@ FROM node:24-alpine
 
 WORKDIR /app
 
+# Somente o package.json: o lock fica de fora de proposito, para o build nao
+# quebrar quando ele estiver defasado em relacao as dependencias.
 COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund
+RUN npm install --omit=dev --no-audit --no-fund --loglevel=error
 
 COPY server ./server
 COPY web ./web

@@ -1,0 +1,4 @@
+# Troque pelo seu dominio. O Caddy emite e renova o certificado HTTPS sozinho.
+sdr.seudominio.com.br {
+	reverse_proxy iasdr:3000
+}

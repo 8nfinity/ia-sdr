@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IA SDR — entrar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="contas.css" />
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="brand">
+      <span class="brand-mark">IA</span>
+      <span class="brand-name">IA SDR</span>
+    </div>
+
+    <div id="primeiro-acesso" class="primeiro" hidden>
+      <strong>Primeiro acesso</strong>
+      Nenhuma conta existe ainda. A que você criar agora será a de
+      <b>administrador</b>, com acesso ao painel de usuários e gastos.
+    </div>
+
+    <div id="aviso-fechado" class="primeiro" hidden>
+      <strong>Entrar</strong>
+      O cadastro é feito pelo administrador. Se você ainda não tem acesso,
+      peça a ele para criar sua conta.
+    </div>
+
+    <div class="abas" id="abas">
+      <button class="aba ativa" data-modo="login">Entrar</button>
+      <button class="aba" data-modo="cadastro">Criar conta</button>
+    </div>
+
+    <form id="form">
+      <label class="campo" id="campo-nome" hidden>
+        Nome
+        <input id="nome" autocomplete="name" placeholder="Como você se chama" />
+      </label>
+      <label class="campo">
+        E-mail
+        <input id="email" type="email" autocomplete="email" placeholder="voce@empresa.com.br" required />
+      </label>
+      <label class="campo">
+        Senha
+        <input id="senha" type="password" autocomplete="current-password" placeholder="mínimo 6 caracteres" required />
+      </label>
+      <button class="btn accent full" type="submit" id="enviar">Entrar</button>
+      <div id="erro" class="login-erro" hidden></div>
+    </form>
+  </div>
+
+<script src="entrar.js"></script>
+</body>
+</html>

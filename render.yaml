@@ -1,0 +1,49 @@
+# Deploy na Render em um clique (Blueprint).
+#
+#   1. suba o projeto para um repositorio no GitHub
+#   2. Render > New > Blueprint > escolha o repositorio
+#   3. preencha as variaveis marcadas como sync:false
+#
+# O disco em /app/data e OBRIGATORIO: e onde ficam leads, ligacoes e a fila
+# do WhatsApp. Sem ele, cada deploy comeca do zero.
+services:
+  - type: web
+    name: ia-sdr
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: dados
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+      - key: NAO_ABRIR
+        value: "1"
+      # Contas: a primeira criada no painel vira o administrador.
+      - key: CADASTRO_ABERTO
+        value: "false"
+      - key: TUNEL_AUTOMATICO
+        value: "false"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_VALIDATE_SIGNATURE
+        value: "true"
+      - key: HUMAN_AGENT_PHONE
+        sync: false
+      - key: MODO_LIGACAO
+        value: direto
+      - key: PROSPECT_SOURCE
+        value: claude
+      - key: WHATSAPP_PROVIDER
+        value: none

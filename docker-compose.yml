@@ -1,0 +1,32 @@
+# Sobe o IA SDR com HTTPS automatico (Caddy cuida do certificado).
+#
+#   1. aponte seu dominio para o IP do servidor
+#   2. edite o Caddyfile com o seu dominio
+#   3. docker compose up -d
+services:
+  iasdr:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - iasdr-dados:/app/data
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-dados:/data
+      - caddy-config:/config
+    depends_on:
+      - iasdr
+
+volumes:
+  iasdr-dados:
+  caddy-dados:
+  caddy-config:

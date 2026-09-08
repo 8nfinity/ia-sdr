@@ -8,6 +8,7 @@ import { lerPlanilha } from '../prospect/planilha.js';
 import { runSearch } from '../prospect/index.js';
 import { startCampaign, engine } from '../voice/campaign.js';
 import { sendWhatsapp, historyOf, statusDaFila } from '../whatsapp/index.js';
+import { sincronizarSeAutomatico } from '../crm/index.js';
 
 export const apiRouter = express.Router();
 
@@ -340,6 +341,15 @@ apiRouter.patch(
     const allowed = ['status', 'notes', 'phone_e164', 'instagram', 'website', 'email'];
     const patch = Object.fromEntries(Object.entries(req.body ?? {}).filter(([k]) => allowed.includes(k)));
     update('companies', req.params.id, patch);
-    res.json(getCompany(req.params.id));
+    const atualizado = getCompany(req.params.id);
+
+    // Lead salvo (ou marcado como atendeu) dispara os CRMs com auto-sync
+    // ligado. Nunca trava a resposta: se o CRM falhar, o log registra e a
+    // pessoa continua usando o painel normalmente.
+    if (patch.status === 'lead' || patch.status === 'atendeu') {
+      sincronizarSeAutomatico(req.usuario.id, atualizado.id, atualizado);
+    }
+
+    res.json(atualizado);
   })
 );

@@ -7,6 +7,7 @@ import { config, integrationStatus, voiceMode } from './config.js';
 import { attachRealtime, log } from './realtime.js';
 import { apiRouter } from './routes/api.js';
 import { adminRouter } from './routes/admin.js';
+import { crmRouter } from './routes/crm.js';
 import { twimlRouter } from './voice/twiml.js';
 import { whatsappRouter } from './whatsapp/index.js';
 import { registrarUso, bancoEm, getSetting, definirDonoAtual } from './db.js';
@@ -63,6 +64,7 @@ app.use((req, _res, next) => {
 instalarAuth(app);
 
 app.use('/api/admin', adminRouter);
+app.use('/api/crm', crmRouter);
 app.use('/api', apiRouter);
 app.use('/twiml', twimlRouter);
 app.use('/webhooks/whatsapp', whatsappRouter);

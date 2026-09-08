@@ -74,6 +74,7 @@ $$('.tab').forEach((btn) =>
     if (btn.dataset.tab === 'live') $('#nav-live').classList.remove('on');
     if (btn.dataset.tab === 'whats') loadThreads();
     if (btn.dataset.tab === 'discar') loadFila();
+    if (btn.dataset.tab === 'crm') loadCrm();
   })
 );
 const goTo = (tab) => $$('.tab').find((b) => b.dataset.tab === tab)?.click();
@@ -256,7 +257,26 @@ function renderCompanies(list) {
   const media = Math.round(list.reduce((a, c) => a + (c.score || 0), 0) / list.length);
   $('#summary').textContent = `${list.length} empresas · ${comTel} com telefone · score médio ${media}`;
 
-  $$('.lead .btn').forEach((btn) => btn.addEventListener('click', () => toggleSave(btn.dataset.id)));
+  $$('.lead-save-btn').forEach((btn) => btn.addEventListener('click', () => toggleSave(btn.dataset.id)));
+  $$('.lead-crm-btn').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const nomeAntes = btn.textContent;
+      btn.textContent = 'Enviando...';
+      try {
+        const { resultados } = await api('/crm/enviar/' + btn.dataset.id, { method: 'POST' });
+        const ok = resultados.filter((r) => r.ok).length;
+        const falhas = resultados.filter((r) => !r.ok);
+        if (falhas.length) toast(`${ok} enviado(s), falhou: ${falhas.map((f) => f.provider).join(', ')}`, true);
+        else toast(`Enviado para ${ok} CRM${ok > 1 ? 's' : ''}.`);
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = nomeAntes;
+      }
+    })
+  );
   updateSaved();
 }
 
@@ -286,6 +306,9 @@ function leadHtml(c) {
   ].filter(Boolean).join(' · ');
 
   const salvo = c.status === 'lead';
+  // O botão de CRM só aparece se existir alguma integração conectada -
+  // sem isso, seria um botão que sempre falha, e ninguém entende o motivo.
+  const temCrm = (state.crmAtivos ?? []).length > 0;
   return `<div class="lead ${salvo ? 'saved' : ''}" data-lead="${c.id}">
     <div class="lead-main">
       <div class="lead-name">${esc(c.name)}
@@ -294,9 +317,12 @@ function leadHtml(c) {
       ${prova ? `<div class="lead-why">${esc(prova)}</div>` : ''}
       ${receita ? `<div class="lead-receita">${receita}</div>` : ''}
     </div>
-    <button class="btn ${salvo ? 'ghost' : 'accent'}" data-id="${c.id}" ${c.phone_e164 ? '' : 'disabled title="sem telefone para ligar"'}>
-      ${salvo ? 'Lead salvo ✓' : 'Salvar como lead'}
-    </button>
+    <div class="lead-botoes">
+      <button class="btn ${salvo ? 'ghost' : 'accent'} lead-save-btn" data-id="${c.id}" ${c.phone_e164 ? '' : 'disabled title="sem telefone para ligar"'}>
+        ${salvo ? 'Lead salvo ✓' : 'Salvar como lead'}
+      </button>
+      ${temCrm ? `<button class="btn ghost sm lead-crm-btn" data-id="${c.id}" title="Enviar para o CRM conectado">Enviar ao CRM</button>` : ''}
+    </div>
   </div>`;
 }
 
@@ -809,9 +835,130 @@ $('#sair').addEventListener('click', async () => {
   location.href = '/entrar.html';
 });
 
+// ───────────────────────────────── integrações (CRM)
+/**
+ * Cada CRM tem um ou mais campos declarados pelo servidor (campos[]), entao o
+ * formulario e gerado a partir do que a API descreve - adicionar um CRM novo
+ * no backend nao exige tocar neste arquivo.
+ */
+async function loadCrm() {
+  const box = $('#crm-cards');
+  try {
+    const [provedores, integracoes] = await Promise.all([api('/crm/provedores'), api('/crm')]);
+    state.crmAtivos = integracoes.filter((i) => i.ativo).map((i) => i.provider);
+
+    box.innerHTML = '';
+    for (const provedor of provedores) {
+      const conectado = integracoes.find((i) => i.provider === provedor.nome);
+      box.appendChild(montarCardCrm(provedor, conectado));
+    }
+  } catch (err) {
+    box.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+  }
+}
+
+function montarCardCrm(provedor, conectado) {
+  const tpl = $('#tpl-crm-card').content.cloneNode(true);
+  const card = tpl.querySelector('.crm-card');
+  card.dataset.provider = provedor.nome;
+
+  card.querySelector('.crm-rotulo').textContent = provedor.rotulo;
+
+  const status = card.querySelector('.crm-status');
+  status.textContent = conectado ? 'conectado' : 'desconectado';
+  status.classList.toggle('ok', Boolean(conectado));
+
+  const camposBox = card.querySelector('.crm-campos');
+  camposBox.innerHTML = provedor.campos
+    .map(
+      (campo) => `<label class="campo">
+        ${esc(campo.rotulo)}
+        <input type="text" data-campo="${esc(campo.chave)}"
+          placeholder="${esc(campo.ajuda ?? '')}"
+          value="${conectado ? esc(conectado.config[campo.chave] ?? '') : ''}" />
+      </label>`
+    )
+    .join('');
+
+  const auto = card.querySelector('.crm-auto input');
+  auto.checked = Boolean(conectado?.autoSync);
+
+  const erroBox = card.querySelector('.crm-erro');
+  if (conectado?.ultimoErro) {
+    erroBox.hidden = false;
+    erroBox.textContent = 'Última falha: ' + conectado.ultimoErro;
+  }
+
+  const info = card.querySelector('.crm-info');
+  if (conectado?.ultimaSincronizacao) {
+    info.textContent = 'Última sincronização: ' + new Date(conectado.ultimaSincronizacao).toLocaleString('pt-BR');
+  }
+
+  const salvar = card.querySelector('.crm-salvar');
+  const testar = card.querySelector('.crm-testar');
+  const remover = card.querySelector('.crm-remover');
+  testar.hidden = !conectado;
+  remover.hidden = !conectado;
+  salvar.textContent = conectado ? 'Salvar' : 'Conectar';
+
+  const lerConfig = () => {
+    const config = {};
+    camposBox.querySelectorAll('[data-campo]').forEach((el) => (config[el.dataset.campo] = el.value.trim()));
+    return config;
+  };
+
+  // Campo deixado com a máscara (••••1234) ou em branco: o servidor resolve
+  // sozinho para o valor já salvo (resolverConfig, em server/crm/index.js),
+  // então aqui basta mandar o que está nos inputs, sem tratamento especial.
+  salvar.addEventListener('click', async () => {
+    salvar.disabled = true;
+    erroBox.hidden = true;
+    try {
+      await api('/crm/' + provedor.nome, {
+        method: 'POST',
+        body: { config: lerConfig(), autoSync: auto.checked },
+      });
+      toast(`${provedor.rotulo} conectado.`);
+      loadCrm();
+    } catch (err) {
+      erroBox.hidden = false;
+      erroBox.textContent = err.message;
+    } finally {
+      salvar.disabled = false;
+    }
+  });
+
+  testar.addEventListener('click', async () => {
+    testar.disabled = true;
+    erroBox.hidden = true;
+    try {
+      await api('/crm/' + provedor.nome + '/testar', { method: 'POST', body: { config: lerConfig() } });
+      toast('Conexão funcionando.');
+    } catch (err) {
+      erroBox.hidden = false;
+      erroBox.textContent = err.message;
+    } finally {
+      testar.disabled = false;
+    }
+  });
+
+  remover.addEventListener('click', async () => {
+    if (!confirm(`Desconectar ${provedor.rotulo}? Os leads já enviados continuam lá.`)) return;
+    await api('/crm/' + provedor.nome, { method: 'DELETE' });
+    toast(`${provedor.rotulo} desconectado.`);
+    loadCrm();
+  });
+
+  return card;
+}
+
 carregarUsuario();
 loadStatus();
 loadCustos();
 loadLastSearch();
 loadActiveCampaign().then(restoreTab);
+// CRMs ativos determinam se o botao "Enviar ao CRM" aparece nos leads.
+api('/crm')
+  .then((integracoes) => (state.crmAtivos = integracoes.filter((i) => i.ativo).map((i) => i.provider)))
+  .catch(() => {});
 connect();

@@ -21,6 +21,7 @@
     <button class="tab" data-tab="live">Ligações <span class="dot" id="nav-live"></span></button>
     <button class="tab" data-tab="discar">Discar <span class="nav-badge" id="fila-count"></span></button>
     <button class="tab" data-tab="whats">WhatsApp</button>
+    <button class="tab" data-tab="crm">Integrações</button>
   </nav>
   <div class="topbar-right">
     <div class="integrations" id="integrations"></div>
@@ -210,7 +211,37 @@
     </div>
   </section>
 
+  <!-- ═══════════════════════════ INTEGRAÇÕES (CRM) ═══════════════════════════ -->
+  <section id="tab-crm" class="view">
+    <h1>Integrações</h1>
+    <p class="sub">Conecte seu CRM e escolha se os leads são enviados automaticamente — quando você salva um lead, ou quando alguém atende a ligação.</p>
+
+    <div id="crm-cards" class="crm-cards"></div>
+  </section>
+
 </main>
+
+<!-- Modelo de um card de CRM (clonado pelo JS para cada provedor) -->
+<template id="tpl-crm-card">
+  <div class="crm-card">
+    <div class="crm-card-head">
+      <h2 class="crm-rotulo"></h2>
+      <span class="tag crm-status">desconectado</span>
+    </div>
+    <div class="crm-campos"></div>
+    <label class="switch crm-auto">
+      <input type="checkbox" /><span class="track"></span>
+      Sincronizar automaticamente
+    </label>
+    <div class="crm-erro" hidden></div>
+    <div class="crm-acoes">
+      <button class="btn accent crm-salvar">Conectar</button>
+      <button class="btn ghost crm-testar" hidden>Testar conexão</button>
+      <button class="btn ghost danger crm-remover" hidden>Desconectar</button>
+    </div>
+    <div class="crm-info"></div>
+  </div>
+</template>
 
 <div id="toast" class="toast" hidden></div>
 <script src="app.js"></script>

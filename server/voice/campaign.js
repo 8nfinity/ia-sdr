@@ -5,6 +5,7 @@ import { emit, log } from '../realtime.js';
 import { getProvider, checarEnderecoPublico, SALA_FIXA } from './provider.js';
 import { generateOpening, sdrTurn, agentBriefing, fallbackOpening, medindo } from '../ai/claude.js';
 import { sendWhatsapp } from '../whatsapp/index.js';
+import { sincronizarSeAutomatico } from '../crm/index.js';
 import { conferenceXml, sayHangupXml } from './twiml-builder.js';
 
 const provider = () => getProvider(() => engine);
@@ -311,6 +312,10 @@ export const engine = {
     update('companies', call.company_id, { status: 'atendeu' });
     emit('call:winner', { callId, campaignId: call.campaign_id, company });
     log('telefonia', `ATENDEU: ${company?.name}. Encerrando as outras ligacoes.`);
+
+    // Quem atendeu vale a pena mandar pro CRM na hora, nao so quando salvo
+    // como lead. Falha de CRM nunca pode atrapalhar a ligacao em andamento.
+    sincronizarSeAutomatico(call.user_id, call.company_id, { ...company, status: 'atendeu' });
 
     // Derruba as demais imediatamente.
     cancelOthers(call.campaign_id, callId).catch(() => {});

@@ -84,17 +84,7 @@ if errorlevel 1 (
 REM ---------- 6. GitHub ----------
 echo [7] github cli >> "%LOG%"
 where gh > nul 2>&1
-if errorlevel 1 (
-  echo.
-  echo   O GitHub CLI nao esta instalado. Faca assim:
-  echo   1. crie um repositorio vazio em github.com/new  ^(nome: ia-sdr, PRIVADO^)
-  echo   2. rode aqui, trocando SEU_USUARIO:
-  echo.
-  echo      git remote add origin https://github.com/SEU_USUARIO/ia-sdr.git
-  echo      git push -u origin main
-  echo.
-  goto :fim
-)
+if errorlevel 1 goto :sem_gh
 
 gh auth status >> "%LOG%" 2>&1
 if errorlevel 1 (
@@ -133,6 +123,65 @@ echo   ============================================
 echo     PRONTO - codigo publicado
 echo   ============================================
 gh repo view --json url -q .url 2>nul
+echo.
+echo   Agora no Northflank: Create Service ^> Combined service,
+echo   escolha este repositorio, build por Dockerfile, porta 3000,
+echo   e volume em /app/data
+echo.
+
+goto :fim
+
+REM ================= caminho sem o GitHub CLI =================
+REM Nao precisa instalar nada: cria-se o repositorio no site e o push vai
+REM pelo proprio git, que abre o login no navegador quando necessario.
+:sem_gh
+echo.
+echo   O GitHub CLI (gh) nao esta instalado - sem problema.
+echo.
+echo   PASSO 1: vou abrir o github.com/new no seu navegador.
+echo            Crie um repositorio com o nome:  ia-sdr
+echo            Marque PRIVATE.
+echo            NAO marque nenhuma opcao de README/gitignore/license.
+echo            Clique em Create repository.
+echo.
+pause
+start "" "https://github.com/new"
+echo.
+echo   PASSO 2: seu nome de USUARIO do GitHub (NAO o e-mail).
+echo            E o que aparece no endereco do seu perfil:
+echo            github.com/SEU-USUARIO
+echo.
+set /p USUARIO=  Usuario:
+
+if "%USUARIO%"=="" (
+  echo   Usuario vazio. Rode o arquivo de novo.
+  goto :fim
+)
+
+echo [8] enviando via git puro para %USUARIO%/ia-sdr >> "%LOG%"
+git remote get-url origin > nul 2>&1
+if not errorlevel 1 git remote remove origin >> "%LOG%" 2>&1
+git remote add origin https://github.com/%USUARIO%/ia-sdr.git >> "%LOG%" 2>&1
+
+echo.
+echo   Enviando... (pode abrir uma janela pedindo seu login do GitHub)
+git push -u origin main
+if errorlevel 1 (
+  echo.
+  echo   O envio falhou. Causas mais comuns:
+  echo     - o repositorio ia-sdr ainda nao foi criado no site
+  echo     - o nome de usuario foi digitado errado
+  echo     - o login no navegador nao foi concluido
+  echo.
+  echo   Para tentar de novo, e so rodar este arquivo outra vez.
+  goto :fim
+)
+
+echo.
+echo   ============================================
+echo     PRONTO - codigo publicado
+echo   ============================================
+echo   https://github.com/%USUARIO%/ia-sdr
 echo.
 echo   Agora no Northflank: Create Service ^> Combined service,
 echo   escolha este repositorio, build por Dockerfile, porta 3000,

@@ -8,24 +8,23 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund --loglevel=error
 
+# So o que o servidor precisa para rodar. A pasta scripts/ (checar, testes,
+# publicar) e ferramenta de linha de comando: fica de fora de proposito, para
+# uma pasta ausente no repositorio nunca derrubar o build.
 COPY server ./server
 COPY web ./web
-COPY scripts ./scripts
 COPY start.js ./
-
-# O banco fica em /app/data - monte um volume aqui, senao voce perde os
-# leads e o historico a cada atualizacao do container.
-VOLUME /app/data
 
 ENV PORT=3000
 ENV NAO_ABRIR=1
-# No servidor quem responde pela internet e o dominio, nao um tunel: subir o
-# cloudflared aqui so criaria um endereco paralelo e confuso.
+# No servidor quem responde pela internet e o dominio, nao um tunel.
 ENV TUNEL_AUTOMATICO=false
+# O banco vive aqui. Monte o volume da hospedagem NESTE caminho, senao cada
+# deploy comeca do zero. Se preferir outro, mude tambem a variavel DATA_DIR.
 ENV DATA_DIR=/app/data
+
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget -qO- http://127.0.0.1:3000/health || exit 1
-
+# Sem VOLUME e sem HEALTHCHECK de proposito: a hospedagem monta o proprio
+# volume e faz a propria checagem, e declarar os dois aqui so cria conflito.
 CMD ["node", "start.js"]

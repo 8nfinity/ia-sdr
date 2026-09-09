@@ -105,6 +105,31 @@ export const config = {
     pitch: process.env.COMPANY_PITCH || '',
     sdrName: process.env.SDR_AGENT_NAME || 'Alice',
   },
+
+  mercadopago: {
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || '',
+    // Publica de verdade: vai para o navegador (tokenizacao do cartao). Nunca
+    // confundir com o accessToken acima, que e secreto.
+    publicKey: process.env.MERCADOPAGO_PUBLIC_KEY || '',
+    // Secret usado para validar a assinatura (x-signature) dos webhooks -
+    // Console do Mercado Pago > Sua integracao > Webhooks > Chave secreta.
+    webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET || '',
+  },
+
+  // Planos fixos (2 por enquanto). Preco em centavos de R$ para nao lidar com
+  // ponto flutuante no dinheiro. "buscasMes"/"ligacoesMes" contam por CICLO da
+  // assinatura (reinicia sozinho a cada renovacao, sem precisar de cron - ver
+  // server/pagamentos/planos.js).
+  planos: {
+    basic: { id: 'basic', nome: 'Basic', precoCentavos: 14700, buscasMes: 15, ligacoesMes: 200 },
+    pro: { id: 'pro', nome: 'Pro', precoCentavos: 39700, buscasMes: 50, ligacoesMes: 500 },
+  },
+  // Pacotes avulsos de credito extra (compra unica, nao expira, some do saldo
+  // conforme e usado). Somam-se a cota do plano quando ela acaba no ciclo.
+  creditos: {
+    buscas: { id: 'buscas', rotulo: '+15 buscas', quantidade: 15, precoCentavos: 5700 },
+    ligacoes: { id: 'ligacoes', rotulo: '+200 ligações', quantidade: 200, precoCentavos: 8700 },
+  },
 };
 
 /** Telefonia real so liga se tiver credencial + URL publica. Senao, simulador. */

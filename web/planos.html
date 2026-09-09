@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IA SDR — plano</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="contas.css" />
+<script src="https://sdk.mercadopago.com/js/v2"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">IA</span>
+    <span class="brand-name">IA SDR</span>
+  </div>
+  <nav class="tabs">
+    <a class="tab" href="/">Painel</a>
+    <button class="tab active">Plano</button>
+  </nav>
+  <div class="topbar-right">
+    <span class="mode" id="quem"></span>
+    <button class="btn ghost sm" id="sair">Sair</button>
+  </div>
+</header>
+
+<main style="max-width:920px">
+  <h1>Seu plano</h1>
+  <p class="sub">Buscas e ligações têm um limite mensal por plano. Quando acabar, dá para comprar mais sem trocar de plano.</p>
+
+  <div id="sem-mp" class="setup" hidden>
+    <strong>Pagamentos ainda não configurados.</strong>
+    Preencha <code>MERCADOPAGO_ACCESS_TOKEN</code> e <code>MERCADOPAGO_PUBLIC_KEY</code> no <code>.env</code> do servidor.
+  </div>
+
+  <div id="status-atual" class="lead-atual" hidden style="margin-bottom:26px">
+    <div class="la-topo">
+      <span class="la-pos" id="status-plano-nome"></span>
+      <span class="lead-score good" id="status-tag"></span>
+    </div>
+    <div id="status-barras" style="display:flex;flex-direction:column;gap:12px;margin-top:6px"></div>
+    <button class="link" id="cancelar-assinatura" style="margin-top:14px;color:var(--danger-soft)">cancelar assinatura</button>
+  </div>
+
+  <div id="planos-cards" class="crm-cards" style="margin-bottom:30px"></div>
+
+  <div id="creditos-secao" hidden>
+    <h2 style="margin-bottom:14px">Precisa de mais este mês?</h2>
+    <div id="creditos-cards" class="crm-cards"></div>
+  </div>
+
+  <div id="checkout" class="box" hidden style="margin-top:26px;max-width:460px">
+    <div class="box-head"><h2 id="checkout-titulo">Pagamento</h2><button class="link" id="checkout-fechar">fechar</button></div>
+    <form id="checkout-form" style="padding:18px;display:flex;flex-direction:column;gap:12px">
+      <label class="campo">Nome no cartão
+        <input id="cardholderName" placeholder="Como está impresso no cartão" required />
+      </label>
+      <label class="campo">Número do cartão
+        <div id="cardNumber" class="campo-seguro"></div>
+      </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label class="campo">Validade
+          <div id="cardExpirationDate" class="campo-seguro"></div>
+        </label>
+        <label class="campo">CVV
+          <div id="securityCode" class="campo-seguro"></div>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
+        <label class="campo">Documento
+          <select id="docType">
+            <option value="CPF">CPF</option>
+            <option value="CNPJ">CNPJ</option>
+          </select>
+        </label>
+        <label class="campo">Número do documento
+          <input id="docNumber" placeholder="Só números" required />
+        </label>
+      </div>
+      <div id="checkout-erro" class="login-erro" hidden></div>
+      <button type="submit" class="btn accent full" id="checkout-enviar">Confirmar pagamento</button>
+      <span style="font-size:11.5px;color:var(--muted-3);text-align:center">
+        Pagamento processado pelo Mercado Pago. O número do cartão não passa pelo IA SDR.
+      </span>
+    </form>
+  </div>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="planos.js"></script>
+</body>
+</html>

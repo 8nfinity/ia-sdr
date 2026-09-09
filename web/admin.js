@@ -80,11 +80,21 @@ async function carregar() {
   $('#tabela-usuarios tbody').innerHTML = p.usuarios
     .map((u) => {
       const estourou = u.limite_usd && u.gasto_total >= u.limite_usd;
+      const planoTag = u.plano
+        ? `<span class="tag ${u.assinatura_status === 'ativa' ? 'ok' : 'hot'}">${esc(u.plano)} · ${esc(u.assinatura_status)}</span>`
+        : '<span class="tag">sem plano</span>';
+      const cotaTxt = u.plano
+        ? `<div class="u-email">${u.buscas_ciclo ?? 0} buscas · ${u.ligacoes_ciclo ?? 0} ligações no ciclo</div>` +
+          ((u.creditos_buscas || u.creditos_ligacoes)
+            ? `<div class="u-email">+${u.creditos_buscas ?? 0} busca(s) · +${u.creditos_ligacoes ?? 0} ligação(ões) extra</div>`
+            : '')
+        : '';
       return `<tr data-id="${u.id}">
         <td>
           <div class="u-nome">${esc(u.nome)} ${u.papel === 'admin' ? '<span class="tag-tel">admin</span>' : ''}</div>
           <div class="u-email">${esc(u.email)} · desde ${data(u.created_at)}</div>
         </td>
+        <td>${planoTag}${cotaTxt}</td>
         <td class="num">${usd(u.gasto_mes)}</td>
         <td class="num">${usd(u.gasto_total)}<div class="u-email">${brl(u.gasto_total)}</div></td>
         <td class="num ${estourou ? 'estourou' : ''}">${u.limite_usd ? usd(u.limite_usd) : '—'}</td>
@@ -95,6 +105,7 @@ async function carregar() {
         <td><span class="tag ${u.status === 'ativo' ? 'ok' : 'hot'}">${esc(u.status)}</span></td>
         <td class="acoes">
           <button class="link" data-acao="detalhe">ver</button>
+          <button class="link" data-acao="plano">plano</button>
           <button class="link" data-acao="limite">limite</button>
           <button class="link" data-acao="status">${u.status === 'ativo' ? 'bloquear' : 'liberar'}</button>
         </td>
@@ -137,6 +148,28 @@ function ligarAcoes(usuarios) {
           await api('/admin/usuarios/' + id, { method: 'PATCH', body: { limiteUsd: valor.trim() || null } });
           toast('Limite atualizado.');
           carregar();
+        }
+
+        if (btn.dataset.acao === 'plano') {
+          const planoAtual = u.plano || 'nenhum';
+          const novoPlano = prompt(
+            `Plano de ${u.nome}: basic, pro ou nenhum (para remover).\nAtual: ${planoAtual}`,
+            planoAtual
+          );
+          if (novoPlano === null) return;
+          const limpo = novoPlano.trim().toLowerCase();
+          if (!['basic', 'pro', 'nenhum'].includes(limpo)) return toast('Digite basic, pro ou nenhum.', true);
+
+          const corpo = { plano: limpo === 'nenhum' ? null : limpo };
+          if (limpo !== 'nenhum') {
+            corpo.assinaturaStatus = confirm('Marcar assinatura como ATIVA agora? (Cancelar = deixa como está)')
+              ? 'ativa'
+              : undefined;
+          }
+          await api('/admin/usuarios/' + id, { method: 'PATCH', body: corpo });
+          toast('Plano atualizado.');
+          carregar();
+          return;
         }
 
         if (btn.dataset.acao === 'detalhe') mostrarDetalhe(id);
@@ -234,4 +267,43 @@ $('#arquivo-restaurar').addEventListener('change', async (e) => {
   }
 });
 
+// ───────────────────────────────── saldo estimado da operação
+async function carregarSaldo() {
+  try {
+    const s = await api('/admin/saldo');
+    $('#saldo-twilio').textContent = s.twilio?.erro
+      ? '—'
+      : s.twilio
+        ? `US$ ${Number(s.twilio.saldo).toFixed(2)}`
+        : 'não configurado';
+    if (s.twilio?.erro) $('#saldo-twilio').title = s.twilio.erro;
+
+    if (!s.anthropic.configurado) {
+      $('#saldo-anthropic').textContent = '—';
+      $('#saldo-anthropic-detalhe').textContent = 'registre a última recarga abaixo para começar a estimar';
+    } else {
+      $('#saldo-anthropic').textContent = usd(s.anthropic.estimado);
+      $('#saldo-anthropic-detalhe').textContent =
+        `recarregou ${usd(s.anthropic.recarregado)} em ${data(s.anthropic.dataRecarga)} · ` +
+        `gastou ${usd(s.anthropic.gastoDesde)} desde então`;
+    }
+  } catch (err) {
+    toast('Saldo: ' + err.message, true);
+  }
+}
+
+$('#registrar-recarga').addEventListener('click', async () => {
+  const valor = Number($('#recarga-valor').value);
+  if (!valor || valor <= 0) return toast('Informe o valor em dólares.', true);
+  try {
+    await api('/admin/saldo/anthropic', { method: 'POST', body: { valorUsd: valor } });
+    $('#recarga-valor').value = '';
+    toast('Recarga registrada.');
+    carregarSaldo();
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
 carregar().catch((err) => toast(err.message, true));
+carregarSaldo();

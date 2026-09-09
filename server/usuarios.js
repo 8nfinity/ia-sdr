@@ -20,7 +20,14 @@ CREATE TABLE IF NOT EXISTS usuarios (
   status TEXT DEFAULT 'ativo',
   limite_usd REAL,
   created_at TEXT,
-  ultimo_acesso TEXT
+  ultimo_acesso TEXT,
+  plano TEXT,
+  assinatura_status TEXT DEFAULT 'nenhuma',
+  assinatura_id_mp TEXT,
+  periodo_inicio TEXT,
+  periodo_fim TEXT,
+  creditos_buscas INTEGER DEFAULT 0,
+  creditos_ligacoes INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email);
 `);
@@ -101,6 +108,12 @@ export const publico = (u) =>
     limiteUsd: u.limite_usd,
     criadoEm: u.created_at,
     ultimoAcesso: u.ultimo_acesso,
+    plano: u.plano,
+    assinaturaStatus: u.assinatura_status,
+    periodoInicio: u.periodo_inicio,
+    periodoFim: u.periodo_fim,
+    creditosBuscas: u.creditos_buscas ?? 0,
+    creditosLigacoes: u.creditos_ligacoes ?? 0,
   };
 
 export const listarUsuarios = () => many('SELECT * FROM usuarios ORDER BY created_at ASC').map(publico);

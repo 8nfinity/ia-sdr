@@ -44,6 +44,28 @@
     </div>
   </div>
 
+  <div class="box" style="margin-bottom:16px">
+    <div class="box-head">
+      <h2>Saldo estimado da operação</h2>
+      <span class="summary">as contas por trás do sistema (Twilio + Anthropic) — não é o saldo de um cliente</span>
+    </div>
+    <div class="detalhe-corpo" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div class="stat-lbl">Twilio (saldo real)</div>
+        <div class="stat-num" id="saldo-twilio">—</div>
+      </div>
+      <div>
+        <div class="stat-lbl">Anthropic (estimado desde a última recarga)</div>
+        <div class="stat-num" id="saldo-anthropic">—</div>
+        <div class="summary" id="saldo-anthropic-detalhe" style="margin-top:4px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="recarga-valor" type="number" min="0" step="0.01" placeholder="US$ recarregado agora" style="max-width:200px" />
+          <button class="btn ghost sm" id="registrar-recarga">Registrar recarga</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="stats" id="totais"></div>
 
   <div class="box" style="margin-bottom:16px">
@@ -60,7 +82,7 @@
     <table class="tabela" id="tabela-usuarios">
       <thead>
         <tr>
-          <th>Usuário</th><th>Gasto (mês)</th><th>Gasto total</th><th>Limite</th>
+          <th>Usuário</th><th>Plano</th><th>Gasto (mês)</th><th>Gasto total</th><th>Limite</th>
           <th>Buscas</th><th>Leads</th><th>Ligações</th><th>Atendidas</th><th>Status</th><th></th>
         </tr>
       </thead>

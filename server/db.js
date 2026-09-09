@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS messages (
   channel TEXT, body TEXT, provider_id TEXT, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS pagamentos_mp (
+  id TEXT PRIMARY KEY, user_id TEXT, tipo TEXT, valor_centavos INTEGER,
+  status TEXT, mp_id TEXT, external_reference TEXT, detalhe TEXT, created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pagamentos_mp_id ON pagamentos_mp(mp_id);
 CREATE TABLE IF NOT EXISTS uso (
   id TEXT PRIMARY KEY, tipo TEXT, ref_id TEXT, modelo TEXT,
   entrada INTEGER, saida INTEGER, cache INTEGER, buscas INTEGER,
@@ -186,6 +191,21 @@ export function migrar() {
   ]) {
     if (cCalls.length && !cCalls.includes(col)) db.exec('ALTER TABLE calls ADD COLUMN ' + col + ' ' + tipo);
   }
+
+  // Assinatura/plano: a tabela usuarios pertence a usuarios.js, que pode
+  // ainda nao ter rodado seu CREATE TABLE quando este migrar() executa
+  // (depende de quem importou quem primeiro) - por isso o try/catch, igual
+  // ja se faz acima para user_id.
+  try {
+    const cUsu = many('PRAGMA table_info(usuarios)').map((c) => c.name);
+    for (const [col, tipo] of [
+      ['plano', 'TEXT'], ['assinatura_status', "TEXT DEFAULT 'nenhuma'"], ['assinatura_id_mp', 'TEXT'],
+      ['periodo_inicio', 'TEXT'], ['periodo_fim', 'TEXT'],
+      ['creditos_buscas', 'INTEGER DEFAULT 0'], ['creditos_ligacoes', 'INTEGER DEFAULT 0'],
+    ]) {
+      if (cUsu.length && !cUsu.includes(col)) db.exec('ALTER TABLE usuarios ADD COLUMN ' + col + ' ' + tipo);
+    }
+  } catch { /* usuarios.js ainda nao criou a tabela - roda na proxima chamada */ }
 }
 
 /** Grava uma chamada de API e devolve o custo em dolares. */
@@ -241,13 +261,18 @@ export function metricasAdmin() {
 
   const porUsuario = many(`
     SELECT u.id, u.nome, u.email, u.papel, u.status, u.limite_usd, u.created_at, u.ultimo_acesso,
+      u.plano, u.assinatura_status, u.periodo_inicio, u.periodo_fim,
+      u.creditos_buscas, u.creditos_ligacoes,
       (SELECT COALESCE(SUM(usd),0) FROM uso WHERE user_id=u.id) AS gasto_total,
       (SELECT COALESCE(SUM(usd),0) FROM uso WHERE user_id=u.id AND substr(created_at,1,7)=?) AS gasto_mes,
       (SELECT COUNT(*) FROM searches WHERE user_id=u.id) AS buscas,
       (SELECT COUNT(*) FROM companies WHERE user_id=u.id) AS leads,
       (SELECT COUNT(*) FROM campaigns WHERE user_id=u.id) AS campanhas,
       (SELECT COUNT(*) FROM calls WHERE user_id=u.id) AS ligacoes,
-      (SELECT COUNT(*) FROM calls WHERE user_id=u.id AND is_winner=1) AS atendidas
+      (SELECT COUNT(*) FROM calls WHERE user_id=u.id AND is_winner=1) AS atendidas,
+      (SELECT COUNT(*) FROM searches WHERE user_id=u.id AND created_at>=COALESCE(u.periodo_inicio,u.created_at)
+        AND (source IS NULL OR source<>'planilha')) AS buscas_ciclo,
+      (SELECT COUNT(*) FROM calls WHERE user_id=u.id AND created_at>=COALESCE(u.periodo_inicio,u.created_at)) AS ligacoes_ciclo
     FROM usuarios u ORDER BY gasto_total DESC
   `, mes);
 

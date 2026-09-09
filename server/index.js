@@ -8,6 +8,8 @@ import { attachRealtime, log } from './realtime.js';
 import { apiRouter } from './routes/api.js';
 import { adminRouter } from './routes/admin.js';
 import { crmRouter } from './routes/crm.js';
+import { pagamentosRouter } from './routes/pagamentos.js';
+import { webhooksMpRouter } from './routes/webhooks-mp.js';
 import { twimlRouter } from './voice/twiml.js';
 import { whatsappRouter } from './whatsapp/index.js';
 import { registrarUso, bancoEm, getSetting, definirDonoAtual } from './db.js';
@@ -65,9 +67,11 @@ instalarAuth(app);
 
 app.use('/api/admin', adminRouter);
 app.use('/api/crm', crmRouter);
+app.use('/api/pagamentos', pagamentosRouter);
 app.use('/api', apiRouter);
 app.use('/twiml', twimlRouter);
 app.use('/webhooks/whatsapp', whatsappRouter);
+app.use('/webhooks/mercadopago', webhooksMpRouter);
 app.use(express.static(path.join(here, '..', 'web')));
 
 app.get('/health', (_req, res) => res.json({ ok: true, voz: voiceMode() }));

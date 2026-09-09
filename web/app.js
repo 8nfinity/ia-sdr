@@ -45,7 +45,11 @@ const api = async (path, options = {}) => {
     throw new Error('sessão expirada');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'falha na requisição');
+  if (!res.ok) {
+    // data.codigo (ex: "limite_plano"/"sem_plano") deixa quem chamou oferecer
+    // "comprar mais" em vez de um erro generico.
+    throw Object.assign(new Error(data.error || 'falha na requisição'), { dados: data });
+  }
   return data;
 };
 
@@ -61,6 +65,19 @@ function toast(msg, variant = false) {
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (el.hidden = true), variant === 'warn' ? 6000 : 4200);
+}
+
+/** Erro de cota (sem_plano / limite_plano): manda pra tela de planos em vez de só reclamar. */
+function avisarSeCota(err) {
+  const codigo = err?.dados?.codigo;
+  if (codigo !== 'sem_plano' && codigo !== 'limite_plano') return false;
+  const el = $('#toast');
+  el.innerHTML = `${esc(err.message)} <a href="/planos.html" style="color:var(--accent);text-decoration:underline;font-weight:700;margin-left:6px">resolver</a>`;
+  el.className = 'toast warn';
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 9000);
+  return true;
 }
 
 // ───────────────────────────────── navegação
@@ -131,6 +148,28 @@ async function loadStatus() {
   }
 }
 
+// ───────────────────────────────── plano/cota (widget na sidebar)
+async function loadPlano() {
+  try {
+    const f = await api('/pagamentos/status');
+    const card = $('#plano-card');
+    card.hidden = false;
+    if (!f.plano) {
+      $('#plano-titulo').textContent = 'Nenhum plano ativo';
+      $('#plano-nota').textContent = 'Escolha um plano para começar a buscar e ligar.';
+      return;
+    }
+    $('#plano-titulo').textContent = `Plano ${f.plano.nome}`;
+    const percBuscas = Math.round((f.usoCiclo.buscas / Math.max(1, f.plano.buscasMes)) * 100);
+    const percLig = Math.round((f.usoCiclo.ligacoes / Math.max(1, f.plano.ligacoesMes)) * 100);
+    $('#plano-nota').textContent =
+      f.assinaturaStatus !== 'ativa'
+        ? 'Assinatura ' + f.assinaturaStatus + ' — clique para resolver.'
+        : `${f.usoCiclo.buscas}/${f.plano.buscasMes} buscas · ${f.usoCiclo.ligacoes}/${f.plano.ligacoesMes} ligações` +
+          (percBuscas >= 80 || percLig >= 80 ? ' — quase no limite' : '');
+  } catch { /* sem sessao ainda ou rota fora do ar: widget so fica escondido */ }
+}
+
 // ───────────────────────────────── custo
 const usd = (v) => 'US$ ' + Number(v ?? 0).toFixed(v < 1 ? 3 : 2).replace('.', ',');
 
@@ -176,6 +215,7 @@ $('#search-form').addEventListener('submit', async (e) => {
   } catch (err) {
     step('Erro: ' + err.message, true);
     setSearching(false);
+    avisarSeCota(err);
   }
 });
 
@@ -428,7 +468,7 @@ $('#start-campaign').addEventListener('click', async () => {
     });
     goTo('live');
   } catch (err) {
-    toast('Erro ao iniciar: ' + err.message, true);
+    if (!avisarSeCota(err)) toast('Erro ao iniciar: ' + err.message, true);
     btn.disabled = false;
   }
 });
@@ -750,6 +790,7 @@ function handle(ev) {
       renderCompanies(ev.companies);
       setSearching(false);
       toast(`${ev.companies.length} empresas encontradas.`);
+      loadPlano();
       break;
     case 'search:error':
       step('ERRO: ' + ev.message, true);
@@ -837,6 +878,7 @@ function handle(ev) {
       $('#stop-campaign').hidden = true;
       $('#talk-tag').hidden = true;
       loadKpis();
+      loadPlano();
       break;
     case 'whatsapp:message':
       if (state.thread === ev.phone) openThread(ev.phone, ev.company_id ?? state.threadCompany, $('#thread-title').textContent);
@@ -1064,6 +1106,7 @@ carregarUsuario();
 loadStatus();
 loadCustos();
 loadKpis();
+loadPlano();
 loadLastSearch();
 loadActiveCampaign().then(restoreTab);
 // CRMs ativos determinam se o botao "Enviar ao CRM" aparece nos leads.

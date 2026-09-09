@@ -9,13 +9,16 @@ import { runSearch } from '../prospect/index.js';
 import { startCampaign, engine } from '../voice/campaign.js';
 import { sendWhatsapp, historyOf, statusDaFila } from '../whatsapp/index.js';
 import { sincronizarSeAutomatico } from '../crm/index.js';
+import { conferirCotaBusca, conferirCotaLigacoes } from '../pagamentos/planos.js';
 
 export const apiRouter = express.Router();
 
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
     log('api', `erro: ${err.message}`);
-    res.status(400).json({ error: err.message });
+    // err.dados carrega o "codigo" (ex: limite_plano) que o front usa para
+    // oferecer a compra de créditos em vez de só mostrar um erro genérico.
+    res.status(400).json({ error: err.message, ...(err.dados || {}) });
   });
 
 /**
@@ -117,6 +120,7 @@ apiRouter.post(
   '/search',
   wrap(async (req, res) => {
     conferirLimite(req);
+    conferirCotaBusca(req.usuario);
     const { segment, region, quantity } = req.body ?? {};
     if (!segment || !region) throw new Error('Informe segmento e regiao.');
     const searchId = uid('sch_');
@@ -217,6 +221,7 @@ apiRouter.post(
     conferirLimite(req);
     const { companyIds, name, agentPhone, whatsappFollowup } = req.body ?? {};
     if (!Array.isArray(companyIds) || !companyIds.length) throw new Error('Selecione ao menos uma empresa.');
+    conferirCotaLigacoes(req.usuario, companyIds.length);
     const result = await startCampaign({ companyIds, name, agentPhone, whatsappFollowup });
     res.json(result);
   })

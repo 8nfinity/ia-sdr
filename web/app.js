@@ -2,17 +2,17 @@
 // nada de busca, nada de ligacao. Avisa em vez de deixar a tela morta.
 if (location.protocol === 'file:') {
   document.body.innerHTML = `
-    <div style="max-width:560px;margin:70px auto;padding:26px;background:#2a2620;
-                border:1px solid rgba(217,164,65,.45);border-radius:10px;
-                font-family:Inter,Segoe UI,sans-serif;color:#f0f1f2">
-      <h2 style="color:#d9a441;margin:0 0 12px">Você abriu o arquivo direto — assim não funciona.</h2>
-      <p style="color:#9aa3a0;margin:0 0 14px">
+    <div style="max-width:560px;margin:70px auto;padding:26px;background:#0d1110;
+                border:1px solid rgba(226,179,74,.4);border-radius:16px;
+                font-family:'Plus Jakarta Sans',Segoe UI,sans-serif;color:#eafff6">
+      <h2 style="color:#e2b34a;margin:0 0 12px">Você abriu o arquivo direto — assim não funciona.</h2>
+      <p style="color:#79a294;margin:0 0 14px">
         O IA SDR precisa do servidor rodando: é ele que busca as empresas, liga e conversa no WhatsApp.
       </p>
-      <ol style="color:#9aa3a0;line-height:1.9;padding-left:20px;margin:0">
-        <li>Na pasta do projeto, dê dois cliques em <b style="color:#8ec9ae">INICIAR.bat</b><br />
-            (ou abra o terminal na pasta e rode <b style="color:#8ec9ae">npm start</b>)</li>
-        <li>Acesse <a href="http://localhost:3000" style="color:#8ec9ae">http://localhost:3000</a></li>
+      <ol style="color:#79a294;line-height:1.9;padding-left:20px;margin:0">
+        <li>Na pasta do projeto, dê dois cliques em <b style="color:#2ee6a0">INICIAR.bat</b><br />
+            (ou abra o terminal na pasta e rode <b style="color:#2ee6a0">npm start</b>)</li>
+        <li>Acesse <a href="http://localhost:3000" style="color:#2ee6a0">http://localhost:3000</a></li>
       </ol>
     </div>`;
   throw new Error('aberto via file:// — abra http://localhost:3000');
@@ -246,6 +246,7 @@ function renderCompanies(list) {
     box.innerHTML = '<div class="empty">Nenhuma empresa aprovada. Tente um segmento mais amplo ou outra cidade.</div>';
     $('#results-actions').hidden = true;
     $('#summary').textContent = '';
+    $('#kpis-prospect').hidden = true;
     updateSaved();
     return;
   }
@@ -254,8 +255,24 @@ function renderCompanies(list) {
   $('#results-actions').hidden = false;
   $('#export-csv').href = `/api/searches/${state.searchId}/csv`;
   const comTel = list.filter((c) => c.phone_e164).length;
+  const celulares = list.filter((c) => c.tipo_telefone === 'celular').length;
   const media = Math.round(list.reduce((a, c) => a + (c.score || 0), 0) / list.length);
   $('#summary').textContent = `${list.length} empresas · ${comTel} com telefone · score médio ${media}`;
+
+  $('#kpis-prospect').hidden = false;
+  $('#kpis-prospect').innerHTML = [
+    ['Empresas encontradas', list.length, ''],
+    ['Com telefone', comTel, `${Math.round((comTel / list.length) * 100)}% do total`],
+    ['Score médio', media, media >= 70 ? 'boa qualidade' : ''],
+    ['Celulares diretos', celulares, celulares ? 'com WhatsApp provável' : ''],
+  ]
+    .map(
+      ([lbl, num, sub]) =>
+        `<div class="kpi"><span class="kpi-lbl">${esc(lbl)}</span>
+         <span class="kpi-num">${esc(num)}</span>
+         ${sub ? `<span class="kpi-sub">${esc(sub)}</span>` : ''}</div>`
+    )
+    .join('');
 
   $$('.lead-save-btn').forEach((btn) => btn.addEventListener('click', () => toggleSave(btn.dataset.id)));
   $$('.lead-crm-btn').forEach((btn) =>
@@ -539,15 +556,19 @@ state.atual = null;
 async function loadFila() {
   const { fila, trabalhados } = await api('/leads');
   state.fila = fila;
+  state.filaFeitos = trabalhados.length;
   $('#fila-count').textContent = fila.length || '';
   $('#fila-feitos').textContent = trabalhados.length
     ? `${trabalhados.length} já trabalhados`
     : '';
 
+  atualizarDonut(trabalhados.length, fila.length);
+
   if (!fila.length) {
     $('#discar-vazio').hidden = false;
     $('#lead-atual').hidden = true;
     $('#fila-head').hidden = true;
+    $('#fila-progresso').hidden = trabalhados.length === 0;
     $('#fila-lista').innerHTML = '';
     return;
   }
@@ -555,6 +576,7 @@ async function loadFila() {
   $('#discar-vazio').hidden = true;
   mostrarLead(0);
 
+  $('#fila-progresso').hidden = false;
   $('#fila-head').hidden = false;
   $('#fila-restantes').textContent = fila.length;
   $('#fila-lista').innerHTML = fila
@@ -566,6 +588,15 @@ async function loadFila() {
       </div></div>`
     )
     .join('');
+}
+
+function atualizarDonut(feitos, restam) {
+  const total = feitos + restam;
+  const pct = total ? Math.round((feitos / total) * 100) : 0;
+  $('#fila-donut').style.setProperty('--pct', pct);
+  $('#fila-donut-txt').textContent = pct + '%';
+  $('#fila-feitos-num').textContent = feitos;
+  $('#fila-total-num').textContent = total;
 }
 
 function mostrarLead(indice) {
@@ -613,9 +644,11 @@ function avancar() {
   const proximo = state.fila[i + 1];
   if (proximo) {
     state.fila = state.fila.filter((c) => c.id !== state.atual.id);
+    state.filaFeitos = (state.filaFeitos ?? 0) + 1;
     mostrarLead(state.fila.findIndex((c) => c.id === proximo.id));
     $('#fila-restantes').textContent = state.fila.length;
     $('#fila-count').textContent = state.fila.length || '';
+    atualizarDonut(state.filaFeitos, state.fila.length);
   } else {
     loadFila();
   }

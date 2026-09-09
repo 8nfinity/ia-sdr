@@ -6,12 +6,13 @@
 <title>IA SDR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-<header class="topbar">
+<div class="shell">
+<aside class="sidebar">
   <div class="brand">
     <span class="brand-mark">IA</span>
     <span class="brand-name">IA SDR</span>
@@ -23,16 +24,18 @@
     <button class="tab" data-tab="whats">WhatsApp</button>
     <button class="tab" data-tab="crm">Integrações</button>
   </nav>
-  <div class="topbar-right">
+  <div class="sidebar-foot">
     <div class="integrations" id="integrations"></div>
     <span class="mode gasto" id="gasto-pill" title="Gasto de API hoje">US$ 0,00 hoje</span>
     <span class="mode" id="mode-pill">carregando</span>
     <a class="tab" id="link-admin" href="/admin.html" hidden>Administração</a>
-    <span class="mode" id="quem"></span>
-    <button class="btn ghost sm" id="sair">Sair</button>
+    <div class="user-row">
+      <span class="mode" id="quem"></span>
+      <button class="btn ghost sm" id="sair">Sair</button>
+    </div>
   </div>
-</header>
-
+</aside>
+<div class="main-wrap">
 <main>
 
   <!-- ═══════════════════════════ PROSPECÇÃO ═══════════════════════════ -->
@@ -70,6 +73,8 @@
     </div>
 
     <div id="search-progress" class="steps" hidden></div>
+
+    <div id="kpis-prospect" class="kpis" hidden></div>
 
     <div class="results-head">
       <h2>Resultados da busca</h2>
@@ -179,6 +184,13 @@
       </div>
     </div>
 
+    <div id="fila-progresso" class="fila-progresso" hidden>
+      <div class="donut" id="fila-donut"><span id="fila-donut-txt">0%</span></div>
+      <div class="fila-progresso-txt">
+        <b id="fila-feitos-num">0</b> trabalhados de <b id="fila-total-num">0</b> na fila
+      </div>
+    </div>
+
     <div class="results-head" id="fila-head" hidden>
       <h2>Próximos na fila <span class="count" id="fila-restantes">0</span></h2>
       <div class="results-actions">
@@ -220,6 +232,8 @@
   </section>
 
 </main>
+</div>
+</div>
 
 <!-- Modelo de um card de CRM (clonado pelo JS para cada provedor) -->
 <template id="tpl-crm-card">

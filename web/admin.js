@@ -205,4 +205,33 @@ $('#novo-usuario').addEventListener('click', async () => {
   }
 });
 
+// ───────────────────────────────── backup / restauração
+$('#arquivo-restaurar').addEventListener('change', async (e) => {
+  const arquivo = e.target.files?.[0];
+  e.target.value = ''; // permite escolher o mesmo arquivo de novo depois
+  if (!arquivo) return;
+
+  const confirmado = confirm(
+    `Restaurar "${arquivo.name}"?\n\n` +
+      'Isso substitui TODOS os dados atuais (usuários, leads, campanhas) pelos ' +
+      'que estão dentro desse arquivo de backup, e reinicia o servidor.\n\n' +
+      'Essa ação não pode ser desfeita.'
+  );
+  if (!confirmado) return;
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const leitor = new FileReader();
+      leitor.onload = () => resolve(String(leitor.result));
+      leitor.onerror = () => reject(new Error('não consegui ler o arquivo'));
+      leitor.readAsDataURL(arquivo);
+    });
+    const r = await api('/admin/restaurar', { method: 'POST', body: { arquivo: base64 } });
+    toast(r.aviso || 'Restaurando...');
+    setTimeout(() => location.reload(), 9000);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
 carregar().catch((err) => toast(err.message, true));

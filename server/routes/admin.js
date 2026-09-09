@@ -3,7 +3,8 @@
  * está acontecendo no sistema. Protegida pelo middleware de papel em auth.js.
  */
 import express from 'express';
-import { metricasAdmin, update, one, many } from '../db.js';
+import fs from 'node:fs';
+import { metricasAdmin, update, one, many, db, bancoEm } from '../db.js';
 import { listarUsuarios, buscarPorId, criarUsuario, trocarSenha, publico } from '../usuarios.js';
 import { log } from '../realtime.js';
 
@@ -14,6 +15,57 @@ const wrap = (fn) => (req, res) =>
 
 /** Painel: métricas gerais + retrato de cada usuário. */
 adminRouter.get('/painel', (_req, res) => res.json(metricasAdmin()));
+
+/**
+ * Baixa uma cópia do banco inteiro (todos os usuários, leads, campanhas).
+ * Serve pra guardar antes de qualquer mudança arriscada na hospedagem, como
+ * criar um volume persistente pela primeira vez.
+ */
+adminRouter.get('/backup', (_req, res) => {
+  // Em modo WAL parte dos dados recentes fica num arquivo -wal à parte;
+  // o checkpoint junta tudo de volta no arquivo principal antes de copiar.
+  db.exec('PRAGMA wal_checkpoint(FULL);');
+  const nome = `iasdr-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.db`;
+  // dotfiles:'allow' porque o DATA_DIR de algumas hospedagens usa pasta
+  // oculta (ex: comeca com "."), e o Express bloqueia isso por padrao.
+  res.download(bancoEm, nome, { dotfiles: 'allow' }, (err) => {
+    if (err) log('admin', `falha ao baixar backup: ${err.message}`);
+  });
+});
+
+/**
+ * Restaura o banco a partir de um arquivo de backup (.db) enviado em base64,
+ * no mesmo formato do endpoint acima. O SQLite já está com o arquivo atual
+ * aberto, então só trocar o conteúdo não basta - o processo precisa reiniciar
+ * pra reabrir o arquivo novo. A hospedagem sobe o processo de novo sozinha
+ * (e o volume persistente, se houver, continua no lugar).
+ */
+adminRouter.post(
+  '/restaurar',
+  wrap(async (req, res) => {
+    const { arquivo } = req.body ?? {};
+    if (!arquivo) throw new Error('Envie o arquivo de backup (.db).');
+    const base64 = arquivo.includes(',') ? arquivo.split(',')[1] : arquivo;
+    const buffer = Buffer.from(base64, 'base64');
+    const cabecalho = Buffer.from('SQLite format 3\x00', 'latin1');
+    if (!buffer.subarray(0, 16).equals(cabecalho)) {
+      throw new Error('Esse arquivo não parece um backup válido do IA SDR (esperado um .db do SQLite).');
+    }
+
+    log('admin', `restaurando banco a partir de um backup de ${(buffer.length / 1024).toFixed(0)} KB — reiniciando...`);
+    res.json({ ok: true, aviso: 'Restaurando e reiniciando o servidor. Aguarde uns 10 segundos e recarregue a página.' });
+
+    // Responde antes de derrubar o processo, senão o navegador nunca recebe o OK.
+    setTimeout(() => {
+      try { db.close(); } catch { /* segue o baile */ }
+      for (const sufixo of ['-wal', '-shm']) {
+        try { fs.rmSync(bancoEm + sufixo); } catch { /* pode não existir */ }
+      }
+      fs.writeFileSync(bancoEm, buffer);
+      process.exit(0);
+    }, 400);
+  })
+);
 
 adminRouter.get('/usuarios', (_req, res) => res.json(listarUsuarios()));
 

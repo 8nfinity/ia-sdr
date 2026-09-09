@@ -31,6 +31,19 @@
   <h1>Administração</h1>
   <p class="sub">Usuários, gastos e o que está acontecendo no sistema.</p>
 
+  <div class="box" style="margin-bottom:16px">
+    <div class="box-head">
+      <h2>Backup do banco</h2>
+      <span class="summary">guarde uma cópia antes de mexer na hospedagem (ex: criar volume persistente)</span>
+    </div>
+    <div class="detalhe-corpo" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      <a class="btn accent sm" href="/api/admin/backup">Baixar backup (.db)</a>
+      <label class="btn ghost sm" for="arquivo-restaurar" style="cursor:pointer">Restaurar de um backup</label>
+      <input type="file" id="arquivo-restaurar" accept=".db" hidden />
+      <span class="summary">restaurar reinicia o servidor e substitui TODOS os dados atuais pelos do arquivo</span>
+    </div>
+  </div>
+
   <div class="stats" id="totais"></div>
 
   <div class="box" style="margin-bottom:16px">

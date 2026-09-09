@@ -5,6 +5,7 @@ import { log } from '../realtime.js';
 import { engine } from './campaign.js';
 import { publicUrl } from './provider.js';
 import { hangupXml, sayHangupXml, talkXml, agentPromptXml, conferenceXml } from './twiml-builder.js';
+import { onRecordingStatus } from './gravacao.js';
 
 export const twimlRouter = express.Router();
 
@@ -33,6 +34,14 @@ function render(res, instruction, callId) {
     case 'conference':
       return xml(res, conferenceXml(instruction.conference, instruction.text, {
         aguardando: instruction.aguardando === true,
+        // So a perna que INICIA a sala (aguardando=false, ou seja, a empresa
+        // entrando na ligacao vencedora) pede a gravacao - e a mesma que ja
+        // dispara "startConferenceOnEnter", entao a sala so existe quando ela
+        // entra de qualquer forma.
+        gravar:
+          config.voice.gravarLigacoes && instruction.aguardando !== true && callId
+            ? { callbackUrl: publicUrl(`/twiml/recording-status/${callId}`) }
+            : null,
       }));
     case 'agent_prompt':
       return xml(res, agentPromptXml(instruction.text, publicUrl(`/twiml/agent-accept/${callId}`)));
@@ -96,4 +105,16 @@ twimlRouter.post('/status/:callId', verifyTwilio, async (req, res) => {
 twimlRouter.post('/agent-status/:callId', verifyTwilio, (req, res) => {
   log('telefonia', `perna do vendedor: ${req.body?.CallStatus}`);
   res.sendStatus(204);
+});
+
+// A gravacao da ligacao vencedora terminou: guarda o audio e dispara a
+// transcricao (se configurada). Nunca falha a resposta por causa disso - a
+// gravacao ja aconteceu de qualquer forma, isso aqui e so contabilidade.
+twimlRouter.post('/recording-status/:callId', verifyTwilio, async (req, res) => {
+  res.sendStatus(204);
+  try {
+    await onRecordingStatus(req.params.callId, req.body || {});
+  } catch (err) {
+    log('telefonia', `erro ao processar gravacao: ${err.message}`);
+  }
 });

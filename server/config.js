@@ -43,6 +43,10 @@ export const config = {
     authToken: process.env.TWILIO_AUTH_TOKEN || '',
     from: process.env.TWILIO_PHONE_NUMBER || '',
     validateSignature: bool(process.env.TWILIO_VALIDATE_SIGNATURE, false),
+    // Service SID do Twilio Conversational Intelligence (console.twilio.com >
+    // Voice > Intelligence > Create Service). Sem isso a ligacao ainda e
+    // gravada, mas nao ha transcricao/resumo automatico - so o audio.
+    intelligenceSid: process.env.TWILIO_INTELLIGENCE_SID || '',
     whatsappFrom: process.env.TWILIO_WHATSAPP_FROM || '',
   },
 
@@ -62,6 +66,10 @@ export const config = {
     maxTurnos: num(process.env.MAX_TURNOS_IA, 4),
     courtesyHangup:
       process.env.COURTESY_HANGUP_MESSAGE || 'Desculpe, foi engano. Tenha um otimo dia!',
+    // Grava a ligacao vencedora (vendedor + empresa) para permitir a
+    // transcricao e o resumo automatico. So o audio; a transcricao depende
+    // de TWILIO_INTELLIGENCE_SID tambem estar configurado.
+    gravarLigacoes: bool(process.env.GRAVAR_LIGACOES, true),
   },
 
   whatsapp: {

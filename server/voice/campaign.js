@@ -285,6 +285,10 @@ export const engine = {
         ended_at: nowIso(),
         outcome: 'caixa postal',
       });
+      log('telefonia', `${company?.name ?? call.to_number} caiu na caixa postal.`);
+      // Evento proprio (alem do call:update) para o painel poder mostrar um
+      // aviso destacado, sem precisar adivinhar a partir do status genérico.
+      emit('call:voicemail', { callId, company });
       emit('call:update', { callId, status: 'voicemail' });
       return { type: 'hangup' };
     }

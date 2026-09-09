@@ -39,7 +39,7 @@ export const agentPromptXml = (text, actionUrl) =>
  * silencio - assim sabe que a linha esta viva. Quando a empresa entra, a
  * conferencia comeca de fato: a musica para, toca um bipe e os dois se falam.
  */
-export const conferenceXml = (conference, intro = null, { aguardando = false } = {}) =>
+export const conferenceXml = (conference, intro = null, { aguardando = false, gravar = null } = {}) =>
   wrap(
     (intro ? say(intro) : '') +
       `<Dial><Conference startConferenceOnEnter="${aguardando ? 'false' : 'true'}" ` +
@@ -47,7 +47,15 @@ export const conferenceXml = (conference, intro = null, { aguardando = false } =
       // Entao ele vai na perna da EMPRESA: e o vendedor que precisa saber o
       // instante em que tem alguem do outro lado. No vendedor era inutil - ele
       // ouvia um bipe da propria entrada e depois silencio.
-      `endConferenceOnExit="true" beep="${aguardando ? 'false' : 'onEnter'}">` +
+      `endConferenceOnExit="true" beep="${aguardando ? 'false' : 'onEnter'}"` +
+      // Grava a partir do momento em que a sala comeca de verdade (a empresa
+      // entrou). So um dos dois lados precisa pedir a gravacao - e o mesmo que
+      // dispara o inicio da conferencia (startConferenceOnEnter=true).
+      (gravar
+        ? ` record="record-from-start" recordingStatusCallback="${escapeXml(gravar.callbackUrl)}" ` +
+          `recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed"`
+        : '') +
+      `>` +
       escapeXml(conference) +
       `</Conference></Dial>`
   );

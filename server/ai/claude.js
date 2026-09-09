@@ -585,3 +585,35 @@ export async function whatsappReply({ company, history, incoming }) {
   });
   return textOf(msg);
 }
+
+/**
+ * Resumo breve da ligacao (vendedor + empresa), a partir da transcricao dada
+ * pela Twilio Conversational Intelligence. Vai junto com o lead pro CRM.
+ */
+export async function summarizeCall({ company, transcript }) {
+  if (!hasAI() || !transcript?.trim()) return null;
+  try {
+    const msg = await chat({
+      system:
+        'Voce resume ligacoes de vendas em pt-BR para ficarem anexadas ao lead no CRM. ' +
+        'Seja objetivo: o que foi dito, o interesse demonstrado e o proximo passo combinado. ' +
+        'Formato: 3 a 5 linhas curtas, sem introducao, sem "resumo:", direto ao ponto.',
+      messages: [
+        {
+          role: 'user',
+          content:
+            `Empresa: ${company?.name ?? '-'}\n\n` +
+            `Transcricao da ligacao (vendedor humano + empresa):\n${transcript.slice(0, 12000)}\n\n` +
+            'Escreva o resumo agora.',
+        },
+      ],
+      maxTokens: 500,
+      effort: 'low',
+      model: config.anthropic.modelConversa,
+    });
+    return textOf(msg) || null;
+  } catch (err) {
+    log('ia', `resumo da ligacao falhou: ${err.message}`);
+    return null;
+  }
+}

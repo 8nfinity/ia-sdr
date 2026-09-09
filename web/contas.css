@@ -11,7 +11,7 @@
   transition: background .15s, color .15s;
 }
 .aba:hover { color: var(--text); }
-.aba.ativa { background: var(--card-2); color: var(--text); font-weight: 600; }
+.aba.ativa { background: var(--card-flat-2); color: var(--heading); font-weight: 600; }
 
 .campo {
   display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px;
@@ -19,25 +19,25 @@
 }
 .campo input {
   text-transform: none; letter-spacing: 0; width: 100%;
-  background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  background: var(--bg); border: 1px solid rgba(46, 230, 160, .16); color: var(--text);
   border-radius: var(--r-sm); padding: 12px 14px; font: inherit; font-size: 14.5px; outline: none;
 }
 .campo input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46, 230, 160, .12); }
 
 .primeiro {
-  background: rgba(46, 230, 160, .07); border: 1px solid var(--line-soft); border-radius: var(--r);
+  background: rgba(46, 230, 160, .07); border: 1px solid rgba(46, 230, 160, .3); border-radius: var(--r);
   padding: 14px 16px; margin-bottom: 18px; font-size: 13.5px; color: var(--muted); line-height: 1.5;
 }
 .primeiro strong { display: block; color: var(--accent); margin-bottom: 4px; font-size: 14.5px; font-family: var(--font-head); }
-.primeiro b { color: var(--text); }
+.primeiro b { color: var(--heading); }
 
 /* ───────────────────────────── administração ───────────────────────────── */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .stat {
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--card-grad); border: 1px solid rgba(46, 230, 160, .12); border-radius: var(--r-lg);
   padding: 16px 18px; display: flex; flex-direction: column; gap: 4px;
 }
-.stat-num { font-family: var(--font-head); font-size: 25px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.stat-num { font-family: var(--font-head); font-size: 25px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--heading); }
 .stat-lbl { font-size: 12.5px; color: var(--muted); }
 .stat-sub { font-size: 12px; color: var(--accent); margin-top: 3px; }
 
@@ -53,14 +53,14 @@
 .tabela { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tabela th {
   text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap;
+  letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid rgba(46, 230, 160, .1); white-space: nowrap;
 }
-.tabela td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.tabela tbody tr:hover { background: var(--card-2); }
+.tabela td { padding: 11px 12px; border-bottom: 1px solid rgba(46, 230, 160, .1); vertical-align: middle; color: var(--text); }
+.tabela tbody tr:hover { background: var(--card-flat-2); }
 .tabela .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tabela .num.estourou { color: var(--red-soft); font-weight: 700; }
+.tabela .num.estourou { color: var(--danger-soft); font-weight: 700; }
 
-.u-nome { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.u-nome { font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--heading); }
 .u-email { font-size: 12px; color: var(--muted); }
 .acoes { display: flex; gap: 10px; white-space: nowrap; }
 
@@ -70,7 +70,7 @@
   letter-spacing: .06em; margin: 20px 0 8px;
 }
 .detalhe-linha { font-size: 14px; color: var(--muted); }
-.detalhe-linha b { color: var(--text); }
+.detalhe-linha b { color: var(--heading); }
 
 .table-wrap { overflow-x: auto; }
 

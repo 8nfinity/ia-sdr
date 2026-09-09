@@ -48,6 +48,7 @@ export const hubspot = {
       ...(company.website ? { website: company.website } : {}),
     };
 
+    let resultado;
     if (externalId) {
       const res = await fetchWithTimeout(
         `${BASE}/crm/v3/objects/contacts/${externalId}`,
@@ -56,10 +57,8 @@ export const hubspot = {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message ?? `HubSpot: HTTP ${res.status}`);
-      return { externalId: data.id, url: `https://app.hubspot.com/contacts/${data.id}` };
-    }
-
-    if (company.email) {
+      resultado = { externalId: data.id, url: `https://app.hubspot.com/contacts/${data.id}` };
+    } else if (company.email) {
       const res = await fetchWithTimeout(
         `${BASE}/crm/v3/objects/contacts/batch/upsert`,
         {
@@ -72,18 +71,48 @@ export const hubspot = {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message ?? `HubSpot: HTTP ${res.status}`);
       const item = data.results?.[0];
-      return { externalId: item?.id, url: item ? `https://app.hubspot.com/contacts/${item.id}` : null };
+      resultado = { externalId: item?.id, url: item ? `https://app.hubspot.com/contacts/${item.id}` : null };
+    } else {
+      // Sem e-mail: cria direto. Se ja existir contato conflitante (409), o
+      // erro sobe legivel em vez de travar a sincronizacao das outras.
+      const res = await fetchWithTimeout(
+        `${BASE}/crm/v3/objects/contacts`,
+        { method: 'POST', headers: cabecalho(apiToken), body: JSON.stringify({ properties }) },
+        12000
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message ?? `HubSpot: HTTP ${res.status}`);
+      resultado = { externalId: data.id, url: `https://app.hubspot.com/contacts/${data.id}` };
     }
 
-    // Sem e-mail: cria direto. Se ja existir contato conflitante (409), o
-    // erro sobe legivel em vez de travar a sincronizacao das outras.
-    const res = await fetchWithTimeout(
-      `${BASE}/crm/v3/objects/contacts`,
-      { method: 'POST', headers: cabecalho(apiToken), body: JSON.stringify({ properties }) },
-      12000
-    );
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.message ?? `HubSpot: HTTP ${res.status}`);
-    return { externalId: data.id, url: `https://app.hubspot.com/contacts/${data.id}` };
+    // Resumo da ligacao (quando houver) vira uma nota anexada ao contato -
+    // nao trava a sincronizacao principal se falhar, so registra e segue.
+    if (company.resumo_ligacao && resultado.externalId) {
+      await anexarNota(apiToken, resultado.externalId, company).catch(() => {});
+    }
+
+    return resultado;
   },
 };
+
+async function anexarNota(apiToken, contactId, company) {
+  const corpo =
+    `<b>Resumo da ligação (IA SDR)</b><br>${(company.resumo_ligacao ?? '').replace(/\n/g, '<br>')}` +
+    (company.gravacao_url ? `<br><br><i>Gravação disponível no painel do IA SDR.</i>` : '');
+  const res = await fetchWithTimeout(
+    `${BASE}/crm/v3/objects/notes`,
+    {
+      method: 'POST',
+      headers: cabecalho(apiToken),
+      body: JSON.stringify({
+        properties: { hs_note_body: corpo, hs_timestamp: Date.now() },
+        // 202 = associação padrão da HubSpot "nota -> contato".
+        associations: [
+          { to: { id: contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }] },
+        ],
+      }),
+    },
+    12000
+  );
+  if (!res.ok) throw new Error(`HubSpot (nota): HTTP ${res.status}`);
+}

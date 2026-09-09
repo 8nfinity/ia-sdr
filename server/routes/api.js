@@ -74,6 +74,30 @@ apiRouter.get('/custos', (_req, res) => {
   });
 });
 
+/** KPIs globais do usuario (topo do painel, visivel em qualquer aba). */
+apiRouter.get('/estatisticas', (_req, res) => {
+  const f = filtroDoDono();
+  const leadsSalvos = one(
+    `SELECT COUNT(*) n FROM companies WHERE status<>'novo'${f.sql}`,
+    ...f.params
+  )?.n ?? 0;
+  const fCalls = filtroDoDono();
+  const ligacoes = one(`SELECT COUNT(*) n FROM calls WHERE 1=1${fCalls.sql}`, ...fCalls.params)?.n ?? 0;
+  const fAtend = filtroDoDono();
+  const atendidas = one(
+    `SELECT COUNT(*) n FROM calls WHERE is_winner=1${fAtend.sql}`,
+    ...fAtend.params
+  )?.n ?? 0;
+  const custoHoje = resumoDeCustos(ehAdmin() ? null : usuarioAtual()?.id).hoje.usd;
+
+  res.json({
+    leadsSalvos,
+    ligacoesDisparadas: ligacoes,
+    taxaAtendimento: ligacoes ? Math.round((atendidas / ligacoes) * 1000) / 10 : 0,
+    custoHojeUsd: custoHoje,
+  });
+});
+
 // Telefone do vendedor salvo pelo painel: vira o padrao do sistema, entao o
 // teste de ligacao e as proximas campanhas ja o usam sem redigitar.
 apiRouter.post(
@@ -351,5 +375,30 @@ apiRouter.patch(
     }
 
     res.json(atualizado);
+  })
+);
+
+/**
+ * Toca/baixa o audio da ligacao vencedora. Proxied pelo nosso servidor (em
+ * vez de mandar o link direto da Twilio) porque a URL da Twilio exige as
+ * credenciais da conta via Basic Auth - inviavel de expor para quem abre o
+ * link. Aqui basta estar logado no IA SDR.
+ */
+apiRouter.get(
+  '/companies/:id/gravacao',
+  wrap(async (req, res) => {
+    const call = one(
+      "SELECT recording_url FROM calls WHERE company_id=? AND recording_url IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+      req.params.id
+    );
+    if (!call?.recording_url) return res.status(404).json({ error: 'Sem gravação para esta empresa.' });
+
+    const token = Buffer.from(`${config.twilio.accountSid}:${config.twilio.authToken}`).toString('base64');
+    const upstream = await fetch(call.recording_url, { headers: { Authorization: `Basic ${token}` } });
+    if (!upstream.ok || !upstream.body) return res.status(502).json({ error: 'Não consegui buscar a gravação na Twilio.' });
+
+    res.type('audio/mpeg');
+    const { Readable } = await import('node:stream');
+    Readable.fromWeb(upstream.body).pipe(res);
   })
 );

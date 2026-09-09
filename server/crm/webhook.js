@@ -47,6 +47,8 @@ export const webhook = {
             endereco: company.address,
             score: company.score,
             status: company.status,
+            resumoLigacao: company.resumo_ligacao || null,
+            transcricaoLigacao: company.transcricao_texto || null,
           },
         }),
       },

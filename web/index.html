@@ -15,223 +15,276 @@
 <aside class="sidebar">
   <div class="brand">
     <span class="brand-mark">IA</span>
-    <span class="brand-name">IA SDR</span>
+    <span class="brand-name-col">
+      <span class="brand-name">IA SDR</span>
+      <span class="brand-sub">prospecção autônoma</span>
+    </span>
   </div>
-  <nav class="tabs">
-    <button class="tab active" data-tab="prospect">Prospecção</button>
-    <button class="tab" data-tab="live">Ligações <span class="dot" id="nav-live"></span></button>
-    <button class="tab" data-tab="discar">Discar <span class="nav-badge" id="fila-count"></span></button>
-    <button class="tab" data-tab="whats">WhatsApp</button>
-    <button class="tab" data-tab="crm">Integrações</button>
+
+  <nav>
+    <span class="nav-label">Operação</span>
+    <div class="tabs">
+      <button class="tab active" data-tab="prospect">
+        <span class="tab-dot"></span><span class="tab-label">Prospecção</span>
+      </button>
+      <button class="tab" data-tab="live">
+        <span class="tab-dot"></span><span class="tab-label">Ligações ao vivo</span><span class="dot" id="nav-live"></span>
+      </button>
+      <button class="tab" data-tab="discar">
+        <span class="tab-dot"></span><span class="tab-label">Discar</span><span class="nav-badge" id="fila-count"></span>
+      </button>
+      <button class="tab" data-tab="whats">
+        <span class="tab-dot"></span><span class="tab-label">WhatsApp</span>
+      </button>
+      <button class="tab" data-tab="crm">
+        <span class="tab-dot"></span><span class="tab-label">Integrações</span>
+      </button>
+      <a class="tab" id="link-admin" href="/admin.html" hidden>
+        <span class="tab-dot"></span><span class="tab-label">Administração</span>
+      </a>
+    </div>
   </nav>
+
   <div class="sidebar-foot">
+    <div class="modo-card">
+      <div class="titulo" id="modo-titulo">Modo —</div>
+      <div class="nota" id="modo-nota">carregando…</div>
+    </div>
     <div class="integrations" id="integrations"></div>
-    <span class="mode gasto" id="gasto-pill" title="Gasto de API hoje">US$ 0,00 hoje</span>
-    <span class="mode" id="mode-pill">carregando</span>
-    <a class="tab" id="link-admin" href="/admin.html" hidden>Administração</a>
-    <div class="user-row">
-      <span class="mode" id="quem"></span>
+    <div class="user-chip">
+      <span class="user-avatar" id="user-avatar">·</span>
+      <span class="user-info">
+        <span class="user-name" id="quem"></span>
+        <span class="user-role">IA SDR</span>
+      </span>
       <button class="btn ghost sm" id="sair">Sair</button>
     </div>
   </div>
 </aside>
+
 <div class="main-wrap">
-<main>
 
-  <!-- ═══════════════════════════ PROSPECÇÃO ═══════════════════════════ -->
-  <section id="tab-prospect" class="view active">
-    <h1>Prospecção</h1>
-    <p class="sub">Busque negócios ativos por segmento e cidade usando IA, e salve<br />os melhores como leads.</p>
-
-    <div id="setup" class="setup" hidden>
-      <strong>Falta configurar a chave da IA — é ela que faz a busca.</strong>
-      <ol>
-        <li>Pegue sua chave em <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></li>
-        <li>Abra o arquivo <code>.env</code> na pasta do projeto e preencha:<br />
-          <code>ANTHROPIC_API_KEY=sk-ant-...</code></li>
-        <li>Pare o servidor (<code>Ctrl+C</code>) e rode <code>npm start</code> de novo</li>
-      </ol>
-      <span class="setup-note" id="setup-note"></span>
+  <header class="pageheader">
+    <div class="search-pill">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="busca-geral" placeholder="Buscar lead, telefone ou conversa" autocomplete="off" />
     </div>
+    <div class="header-right">
+      <span class="pill gasto" id="gasto-pill" title="Gasto de API hoje">US$ 0,00 hoje</span>
+      <span class="pill modo" id="mode-pill"><span class="live-dot"></span>carregando</span>
+    </div>
+  </header>
 
-    <form id="search-form" class="search-row">
-      <input name="segment" placeholder="Segmento (ex: clínicas de estética)" autocomplete="off" required />
-      <input name="region" placeholder="Cidade (ex: Uberlândia, MG)" autocomplete="off" required />
-      <input name="quantity" type="number" min="1" max="100" value="10" title="Quantidade de empresas" required />
-      <button type="submit" class="btn accent" id="search-btn">
-        <span class="spinner"></span><span class="label">Buscar</span>
-      </button>
-    </form>
+  <main>
 
-    <div class="importar">
+    <div class="kpis" id="kpis"></div>
+
+    <!-- ═══════════════════════════ PROSPECÇÃO ═══════════════════════════ -->
+    <section id="tab-prospect" class="view active">
+      <div class="row-head">
+        <div>
+          <h1>Prospecção</h1>
+          <p class="sub">Busque negócios ativos por segmento e cidade usando IA, e salve os melhores como leads.</p>
+        </div>
+        <div class="actions" id="results-actions" hidden>
+          <button class="btn ghost sm" id="save-all">salvar todos</button>
+          <a class="btn ghost sm" id="export-csv" href="#">exportar CSV</a>
+        </div>
+      </div>
+
+      <div id="setup" class="setup" hidden>
+        <strong>Falta configurar a chave da IA — é ela que faz a busca.</strong>
+        <ol>
+          <li>Pegue sua chave em <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></li>
+          <li>Abra o arquivo <code>.env</code> na pasta do projeto e preencha:<br />
+            <code>ANTHROPIC_API_KEY=sk-ant-...</code></li>
+          <li>Pare o servidor (<code>Ctrl+C</code>) e rode <code>npm start</code> de novo</li>
+        </ol>
+        <span class="setup-note" id="setup-note"></span>
+      </div>
+
+      <form id="search-form" class="search-row">
+        <input name="segment" placeholder="Segmento (ex: clínicas de estética)" autocomplete="off" required />
+        <input name="region" placeholder="Cidade (ex: Uberlândia, MG)" autocomplete="off" required />
+        <input name="quantity" type="number" min="1" max="100" value="10" title="Quantidade de empresas" required />
+        <button type="submit" class="btn accent" id="search-btn">
+          <span class="spinner"></span><span class="label">Buscar</span>
+        </button>
+      </form>
+
       <label for="arquivo-planilha" class="importar-area" id="area-planilha">
         <strong>ou importe sua planilha</strong>
         <span>arraste o arquivo aqui, ou clique para escolher — .xlsx ou .csv, com nome e telefone</span>
       </label>
       <input type="file" id="arquivo-planilha" accept=".xlsx,.csv,.txt,.tsv" hidden />
       <div id="importar-resultado" class="importar-resultado" hidden></div>
-    </div>
 
-    <div id="search-progress" class="steps" hidden></div>
+      <div id="search-progress" class="steps" hidden></div>
 
-    <div id="kpis-prospect" class="kpis" hidden></div>
-
-    <div class="results-head">
-      <h2>Resultados da busca</h2>
-      <div class="results-actions" id="results-actions" hidden>
+      <div class="results-head">
+        <h2>Resultados da busca</h2>
         <span class="summary" id="summary"></span>
-        <button class="link" id="save-all">salvar todos</button>
-        <a class="link" id="export-csv" href="#">exportar CSV</a>
       </div>
-    </div>
 
-    <div id="results" class="leads">
-      <div class="empty">Nenhuma busca ainda. Preencha segmento e cidade acima.</div>
-    </div>
-
-    <div class="action-bar" id="action-bar">
-      <div class="ab-info">
-        <strong id="selected-count">0</strong> leads salvos
-        <span>o vendedor atende primeiro · a empresa que atender cai na linha dele</span>
+      <div id="results" class="leads">
+        <div class="empty">Nenhuma busca ainda. Preencha segmento e cidade acima.</div>
       </div>
-      <div class="ab-controls">
-        <input id="agent-phone" placeholder="Telefone do vendedor (+5511...)" autocomplete="off" required />
-        <label class="switch">
-          <input type="checkbox" id="wa-followup" checked /><span class="track"></span>
-          WhatsApp p/ quem não atender
-        </label>
-        <button id="start-campaign" class="btn call" disabled>Ligar para todos agora</button>
+
+      <div class="action-bar" id="action-bar">
+        <div class="ab-info">
+          <strong><span id="selected-count">0</span> leads salvos</strong>
+          <span>o vendedor atende primeiro · a empresa que atender cai na linha dele</span>
+        </div>
+        <div class="ab-controls">
+          <input id="agent-phone" placeholder="Telefone do vendedor (+5511...)" autocomplete="off" required />
+          <label class="switch">
+            <input type="checkbox" id="wa-followup" checked /><span class="track"></span>
+            WhatsApp p/ quem não atender
+          </label>
+          <button id="start-campaign" class="btn call" disabled>Ligar para todos agora</button>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ═══════════════════════════ LIGAÇÕES ═══════════════════════════ -->
-  <section id="tab-live" class="view">
-    <div class="row-head">
-      <div>
-        <h1>Ligações ao vivo</h1>
-        <p class="sub">O vendedor entra na linha primeiro. Todas as empresas tocam juntas e a primeira que atender cai direto na ligação dele — as outras caem no mesmo instante.</p>
+    <!-- ═══════════════════════════ LIGAÇÕES ═══════════════════════════ -->
+    <section id="tab-live" class="view">
+      <div class="row-head">
+        <div>
+          <h1>Ligações ao vivo</h1>
+          <p class="sub">O vendedor entra na linha primeiro. Todas as empresas tocam juntas e a primeira que atender cai direto na ligação dele — as outras caem no mesmo instante.</p>
+        </div>
+        <button id="stop-campaign" class="btn ghost danger" hidden>Encerrar campanha</button>
       </div>
-      <button id="stop-campaign" class="btn ghost" hidden>Encerrar campanha</button>
-    </div>
 
-    <div id="aviso-simulacao" class="setup" hidden>
-      <strong>Modo simulação — nenhum telefone vai tocar de verdade.</strong>
-      O sistema encena a corrida inteira aqui na tela para você ver o fluxo, mas
-      não existe Twilio configurada, então nada sai para a rede telefônica.
-      Para ligar de verdade: preencha <code>TWILIO_*</code> e
-      <code>PUBLIC_BASE_URL</code> no <code>.env</code> e rode <code>npm run checar</code>.
-    </div>
+      <div id="aviso-simulacao" class="setup" hidden>
+        <strong>Modo simulação — nenhum telefone vai tocar de verdade.</strong>
+        O sistema encena a corrida inteira aqui na tela para você ver o fluxo, mas
+        não existe Twilio configurada, então nada sai para a rede telefônica.
+        Para ligar de verdade: preencha <code>TWILIO_*</code> e
+        <code>PUBLIC_BASE_URL</code> no <code>.env</code> e rode <code>npm run checar</code>.
+      </div>
 
-    <div id="agent-status" class="agent-status" hidden></div>
+      <div id="agent-status" class="agent-status" hidden></div>
 
-    <div class="race" id="calls">
-      <div class="empty">Nenhuma campanha ativa. Salve leads na aba Prospecção e dispare a corrida.</div>
-    </div>
+      <div class="race" id="calls">
+        <div class="empty">Nenhuma campanha ativa. Salve leads na aba Prospecção e dispare a corrida.</div>
+      </div>
 
-    <div class="two-col">
-      <div class="box" id="conversa-box">
-        <div class="box-head"><h2>Conversa</h2><span class="live" id="talk-tag" hidden>na linha</span></div>
-        <div id="transcript" class="chat"><div class="empty">Aguardando alguém atender...</div></div>
-        <div id="sim-controls" class="sim" hidden>
-          <div class="sim-hint">modo simulação — escreva o que a empresa respondeu</div>
-          <div class="composer">
-            <input id="sim-speech" placeholder="Ex: Pode falar, do que se trata?" autocomplete="off" />
-            <button id="sim-send" class="btn accent">Responder</button>
+      <div class="two-col">
+        <div class="box" id="conversa-box">
+          <div class="box-head"><h2>Conversa</h2><span class="live" id="talk-tag" hidden>na linha</span></div>
+          <div id="transcript" class="chat"><div class="empty">Aguardando alguém atender...</div></div>
+          <div id="sim-controls" class="sim" hidden>
+            <div class="sim-hint">modo simulação — escreva o que a empresa respondeu</div>
+            <div class="composer">
+              <input id="sim-speech" placeholder="Ex: Pode falar, do que se trata?" autocomplete="off" />
+              <button id="sim-send" class="btn accent">Responder</button>
+            </div>
+            <button id="sim-accept" class="btn ghost full">Vendedor atende e aperta 1 (handoff)</button>
           </div>
-          <button id="sim-accept" class="btn ghost full">Vendedor atende e aperta 1 (handoff)</button>
+        </div>
+        <div class="box">
+          <div class="box-head"><h2>Log do sistema</h2></div>
+          <div id="log" class="log"><div class="empty">Os eventos aparecem aqui durante a campanha.</div></div>
         </div>
       </div>
-      <div class="box">
-        <div class="box-head"><h2>Log do sistema</h2></div>
-        <div id="log" class="log"><div class="empty">Os eventos aparecem aqui durante a campanha.</div></div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ═══════════════════════════ DISCAR (manual) ═══════════════════════════ -->
-  <section id="tab-discar" class="view">
-    <h1>Fila de discagem</h1>
-    <p class="sub">Você liga do seu próprio telefone, um por vez. Sem Twilio, sem custo.<br />
-      Abra esta página <strong>no celular</strong> e o botão Ligar disca direto.</p>
-
-    <div id="discar-vazio" class="empty">
-      Nenhum lead na fila. Salve empresas na aba Prospecção.
-    </div>
-
-    <div id="lead-atual" class="lead-atual" hidden>
-      <div class="la-topo">
-        <span class="la-pos" id="la-pos"></span>
-        <span class="lead-score good" id="la-score"></span>
-      </div>
-      <h2 class="la-nome" id="la-nome"></h2>
-      <div class="la-meta" id="la-meta"></div>
-
-      <div class="la-acoes">
-        <a class="btn call lg" id="la-ligar" href="#">Ligar agora</a>
-        <a class="btn accent" id="la-celular" href="#" hidden>Ligar no celular do responsável</a>
-        <a class="btn ghost" id="la-whats" href="#" target="_blank" rel="noopener">WhatsApp</a>
-        <button class="btn ghost" id="la-copiar">Copiar número</button>
+    <!-- ═══════════════════════════ DISCAR (manual) ═══════════════════════════ -->
+    <section id="tab-discar" class="view">
+      <div>
+        <h1>Fila de discagem</h1>
+        <p class="sub">Você liga do seu próprio telefone, um por vez. Sem Twilio, sem custo.
+          Abra esta página no celular e o botão Ligar disca direto.</p>
       </div>
 
-      <div class="la-resultado">
-        <span>Como foi?</span>
-        <button class="btn ghost sm" data-resultado="atendeu">Atendeu</button>
-        <button class="btn ghost sm" data-resultado="nao atendeu">Não atendeu</button>
-        <button class="btn ghost sm" data-resultado="retornar">Retornar depois</button>
-        <button class="btn ghost sm" data-resultado="sem interesse">Sem interesse</button>
-        <button class="btn ghost sm" id="la-pular">Pular</button>
+      <div id="discar-vazio" class="empty">
+        Nenhum lead na fila. Salve empresas na aba Prospecção.
       </div>
-    </div>
 
-    <div id="fila-progresso" class="fila-progresso" hidden>
-      <div class="donut" id="fila-donut"><span id="fila-donut-txt">0%</span></div>
-      <div class="fila-progresso-txt">
-        <b id="fila-feitos-num">0</b> trabalhados de <b id="fila-total-num">0</b> na fila
-      </div>
-    </div>
+      <div class="discar-grid">
+        <div id="lead-atual" class="lead-atual" hidden>
+          <div class="la-topo">
+            <span class="la-pos" id="la-pos"></span>
+            <span class="lead-score" id="la-score"></span>
+          </div>
+          <h2 class="la-nome" id="la-nome"></h2>
+          <div class="la-meta" id="la-meta"></div>
 
-    <div class="results-head" id="fila-head" hidden>
-      <h2>Próximos na fila <span class="count" id="fila-restantes">0</span></h2>
-      <div class="results-actions">
-        <span class="summary" id="fila-feitos"></span>
-        <a class="link" href="/api/leads/csv">exportar mailing (CSV)</a>
-        <a class="link" href="/api/leads/csv?formato=telefones">só telefones (TXT)</a>
-      </div>
-    </div>
-    <div id="fila-lista" class="leads"></div>
-  </section>
+          <div class="la-acoes">
+            <a class="btn call lg" id="la-ligar" href="#">Ligar agora</a>
+            <a class="btn ghost" id="la-celular" href="#" hidden>Ligar no celular do responsável</a>
+            <a class="btn ghost" id="la-whats" href="#" target="_blank" rel="noopener">WhatsApp</a>
+            <button class="btn ghost" id="la-copiar">Copiar número</button>
+          </div>
 
-  <!-- ═══════════════════════════ WHATSAPP ═══════════════════════════ -->
-  <section id="tab-whats" class="view">
-    <h1>WhatsApp</h1>
-    <p class="sub">A IA manda <strong>só a primeira mensagem</strong> para quem não atendeu. A conversa a partir daí é sua — as respostas chegam aqui e no seu WhatsApp.</p>
+          <div class="la-resultado">
+            <span>Como foi?</span>
+            <button class="btn sm" data-resultado="atendeu">Atendeu</button>
+            <button class="btn sm" data-resultado="nao atendeu">Não atendeu</button>
+            <button class="btn sm" data-resultado="retornar">Retornar depois</button>
+            <button class="btn sm" data-resultado="sem interesse">Sem interesse</button>
+            <button class="btn sm" id="la-pular">Pular</button>
+          </div>
+        </div>
 
-    <div class="wa-layout">
-      <div class="box">
-        <div class="box-head"><h2>Conversas</h2></div>
-        <div id="threads" class="threads"><div class="empty">Nenhuma conversa ainda.</div></div>
-      </div>
-      <div class="box">
-        <div class="box-head"><h2 id="thread-title">Selecione uma conversa</h2></div>
-        <div id="thread" class="chat"><div class="empty">Escolha uma conversa à esquerda.</div></div>
-        <div class="composer">
-          <input id="wa-text" placeholder="Escreva a mensagem — deixe vazio para a IA escrever" autocomplete="off" />
-          <button id="wa-send" class="btn accent" disabled>Enviar</button>
+        <div class="progresso-box" id="fila-progresso" hidden>
+          <div class="box-head">
+            <h2>Progresso do dia</h2>
+            <span class="summary" id="fila-feitos"></span>
+          </div>
+          <div class="fila-progresso">
+            <svg class="donut" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(46,230,160,.12)" stroke-width="12"></circle>
+              <circle id="fila-donut" cx="60" cy="60" r="50" fill="none" stroke="#2ee6a0" stroke-width="12"
+                stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="314"></circle>
+            </svg>
+            <div class="fila-progresso-txt">
+              <div class="num" id="fila-donut-txt">0%</div>
+              <div class="lbl">da fila trabalhada</div>
+            </div>
+          </div>
+          <div class="resumo-fila" id="resumo-fila"></div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- ═══════════════════════════ INTEGRAÇÕES (CRM) ═══════════════════════════ -->
-  <section id="tab-crm" class="view">
-    <h1>Integrações</h1>
-    <p class="sub">Conecte seu CRM e escolha se os leads são enviados automaticamente — quando você salva um lead, ou quando alguém atende a ligação.</p>
+      <div class="results-head" id="fila-head" hidden>
+        <h2>Próximos na fila <span class="count" id="fila-restantes">0</span></h2>
+      </div>
+      <div id="fila-lista" style="display:flex;flex-direction:column;gap:9px"></div>
+    </section>
 
-    <div id="crm-cards" class="crm-cards"></div>
-  </section>
+    <!-- ═══════════════════════════ WHATSAPP ═══════════════════════════ -->
+    <section id="tab-whats" class="view">
+      <div>
+        <h1>WhatsApp</h1>
+        <p class="sub">A IA manda <strong>só a primeira mensagem</strong> para quem não atendeu. A conversa a partir daí é sua — as respostas chegam aqui e no seu WhatsApp.</p>
+      </div>
 
-</main>
+      <div class="wa-layout">
+        <div class="threads" id="threads"><div class="empty">Nenhuma conversa ainda.</div></div>
+        <div class="box">
+          <div class="box-head"><h2 id="thread-title">Selecione uma conversa</h2></div>
+          <div id="thread" class="chat"><div class="empty">Escolha uma conversa à esquerda.</div></div>
+          <div class="composer">
+            <input id="wa-text" placeholder="Escreva a mensagem — deixe vazio para a IA escrever" autocomplete="off" />
+            <button id="wa-send" class="btn accent" disabled>Enviar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ INTEGRAÇÕES (CRM) ═══════════════════════════ -->
+    <section id="tab-crm" class="view">
+      <div>
+        <h1>Integrações</h1>
+        <p class="sub">Conecte seu CRM e escolha se os leads são enviados automaticamente — quando você salva um lead, ou quando alguém atende a ligação.</p>
+      </div>
+
+      <div id="crm-cards" class="crm-cards"></div>
+    </section>
+
+  </main>
 </div>
 </div>
 
@@ -239,7 +292,10 @@
 <template id="tpl-crm-card">
   <div class="crm-card">
     <div class="crm-card-head">
-      <h2 class="crm-rotulo"></h2>
+      <span class="id-badge">
+        <span class="crm-icon"></span>
+        <span class="crm-rotulo"></span>
+      </span>
       <span class="tag crm-status">desconectado</span>
     </div>
     <div class="crm-campos"></div>

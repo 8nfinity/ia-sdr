@@ -52,6 +52,33 @@ export const pipedrive = {
     );
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) throw new Error(data?.error ?? `Pipedrive: HTTP ${res.status}`);
-    return { externalId: String(data.data.id), url: `https://app.pipedrive.com/person/${data.data.id}` };
+    const idPessoa = String(data.data.id);
+
+    // Resumo da ligacao (quando houver) vira uma nota anexada a pessoa - nao
+    // trava a sincronizacao principal se falhar, so registra e segue.
+    if (company.resumo_ligacao) {
+      await anexarNota({ apiToken }, idPessoa, company).catch(() => {});
+    }
+
+    return { externalId: idPessoa, url: `https://app.pipedrive.com/person/${idPessoa}` };
   },
 };
+
+async function anexarNota({ apiToken }, personId, company) {
+  const conteudo =
+    `<b>Resumo da ligação (IA SDR)</b><br>${escapeHtml(company.resumo_ligacao)}` +
+    (company.gravacao_url ? `<br><br><i>Gravação disponível no painel do IA SDR.</i>` : '');
+  const res = await fetchWithTimeout(
+    `${base()}/api/v1/notes?api_token=${encodeURIComponent(apiToken)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: conteudo, person_id: Number(personId) }),
+    },
+    12000
+  );
+  if (!res.ok) throw new Error(`Pipedrive (nota): HTTP ${res.status}`);
+}
+
+const escapeHtml = (s) =>
+  String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));

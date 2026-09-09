@@ -53,19 +53,22 @@ const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 let toastTimer;
-function toast(msg, isError = false) {
+// variant: false (neutro), true/'err' (erro), 'warn' (aviso - ex: caixa postal)
+function toast(msg, variant = false) {
   const el = $('#toast');
   el.textContent = msg;
-  el.className = 'toast' + (isError ? ' err' : '');
+  el.className = 'toast' + (variant === 'warn' ? ' warn' : variant ? ' err' : '');
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 4200);
+  toastTimer = setTimeout(() => (el.hidden = true), variant === 'warn' ? 6000 : 4200);
 }
 
 // ───────────────────────────────── navegação
-$$('.tab').forEach((btn) =>
+// #link-admin também tem a classe .tab (mesmo visual na sidebar) mas é um
+// link de verdade para /admin.html, sem data-tab - não entra na troca de aba.
+$$('.tab[data-tab]').forEach((btn) =>
   btn.addEventListener('click', () => {
-    $$('.tab').forEach((b) => b.classList.remove('active'));
+    $$('.tab[data-tab]').forEach((b) => b.classList.remove('active'));
     $$('.view').forEach((v) => v.classList.remove('active'));
     btn.classList.add('active');
     $('#tab-' + btn.dataset.tab).classList.add('active');
@@ -77,7 +80,7 @@ $$('.tab').forEach((btn) =>
     if (btn.dataset.tab === 'crm') loadCrm();
   })
 );
-const goTo = (tab) => $$('.tab').find((b) => b.dataset.tab === tab)?.click();
+const goTo = (tab) => $$('.tab[data-tab]').find((b) => b.dataset.tab === tab)?.click();
 
 // ───────────────────────────────── status
 async function loadStatus() {
@@ -106,9 +109,16 @@ async function loadStatus() {
     : ' WhatsApp desativado';
 
   const pill = $('#mode-pill');
-  pill.textContent = s.modoVoz === 'twilio' ? 'ligações reais' : 'simulação';
-  pill.classList.toggle('real', s.modoVoz === 'twilio');
-  $('#aviso-simulacao').hidden = s.modoVoz === 'twilio';
+  const real = s.modoVoz === 'twilio';
+  pill.innerHTML = '<span class="live-dot"></span>' + (real ? 'ligações reais' : 'simulação');
+  pill.classList.toggle('real', real);
+  $('#aviso-simulacao').hidden = real;
+
+  // Mesmo texto no card da sidebar (modo-card), so que com a explicação.
+  $('#modo-titulo').textContent = 'Modo ' + (real ? 'produção' : 'simulação');
+  $('#modo-nota').textContent = real
+    ? 'Twilio ativa — as ligações saem para a rede telefônica de verdade.'
+    : 'Nenhum telefone toca de verdade. Configure TWILIO_* e PUBLIC_BASE_URL no .env para ligar de verdade.';
 
   // Sem fonte de busca configurada o botão Buscar não tem o que fazer:
   // avisa na tela, com o passo a passo, em vez de falhar só no clique.
@@ -132,6 +142,21 @@ async function loadCustos() {
       `Gasto de API hoje: ${usd(c.hoje.usd)} em ${c.hoje.chamadas} chamadas\n` +
       `Acumulado: ${usd(c.total.usd)}\n` +
       c.porTipo.map((t) => `  ${t.tipo}: ${usd(t.usd)} (${t.chamadas}x)`).join('\n');
+  } catch { /* sem dados ainda */ }
+}
+
+// ───────────────────────────────── KPIs (topo, visíveis em qualquer aba)
+async function loadKpis() {
+  try {
+    const s = await api('/estatisticas');
+    $('#kpis').innerHTML = [
+      { lbl: 'Leads salvos', num: s.leadsSalvos },
+      { lbl: 'Ligações disparadas', num: s.ligacoesDisparadas },
+      { lbl: 'Taxa de atendimento', num: s.ligacoesDisparadas ? s.taxaAtendimento.toString().replace('.', ',') + '%' : '—' },
+      { lbl: 'Custo de IA hoje', num: usd(s.custoHojeUsd) },
+    ]
+      .map((k) => `<div class="kpi"><span class="kpi-lbl">${esc(k.lbl)}</span><span class="kpi-num">${esc(k.num)}</span></div>`)
+      .join('');
   } catch { /* sem dados ainda */ }
 }
 
@@ -246,7 +271,6 @@ function renderCompanies(list) {
     box.innerHTML = '<div class="empty">Nenhuma empresa aprovada. Tente um segmento mais amplo ou outra cidade.</div>';
     $('#results-actions').hidden = true;
     $('#summary').textContent = '';
-    $('#kpis-prospect').hidden = true;
     updateSaved();
     return;
   }
@@ -255,24 +279,8 @@ function renderCompanies(list) {
   $('#results-actions').hidden = false;
   $('#export-csv').href = `/api/searches/${state.searchId}/csv`;
   const comTel = list.filter((c) => c.phone_e164).length;
-  const celulares = list.filter((c) => c.tipo_telefone === 'celular').length;
   const media = Math.round(list.reduce((a, c) => a + (c.score || 0), 0) / list.length);
   $('#summary').textContent = `${list.length} empresas · ${comTel} com telefone · score médio ${media}`;
-
-  $('#kpis-prospect').hidden = false;
-  $('#kpis-prospect').innerHTML = [
-    ['Empresas encontradas', list.length, ''],
-    ['Com telefone', comTel, `${Math.round((comTel / list.length) * 100)}% do total`],
-    ['Score médio', media, media >= 70 ? 'boa qualidade' : ''],
-    ['Celulares diretos', celulares, celulares ? 'com WhatsApp provável' : ''],
-  ]
-    .map(
-      ([lbl, num, sub]) =>
-        `<div class="kpi"><span class="kpi-lbl">${esc(lbl)}</span>
-         <span class="kpi-num">${esc(num)}</span>
-         ${sub ? `<span class="kpi-sub">${esc(sub)}</span>` : ''}</div>`
-    )
-    .join('');
 
   $$('.lead-save-btn').forEach((btn) => btn.addEventListener('click', () => toggleSave(btn.dataset.id)));
   $$('.lead-crm-btn').forEach((btn) =>
@@ -298,21 +306,25 @@ function renderCompanies(list) {
 }
 
 function leadHtml(c) {
-  const meta = [
-    c.phone_e164
-      ? `<span>${esc(c.phone_e164)}</span>${c.tipo_telefone === 'celular' ? '<span class="tag-tel">celular</span>' : ''}`
-      : '',
+  // Layout do card vira colunas curtas (telefone / local+avaliações / links)
+  // em vez de uma linha só separada por "·", como no visual de referência.
+  const linhaFone = c.phone_e164
+    ? `<span>${esc(c.phone_e164)}${c.tipo_telefone === 'celular' ? '<span class="tag-tel">celular</span>' : ''}</span>`
+    : 'sem telefone';
+
+  const prova = c.reviews
+    ? `${c.reviews} avaliações${c.rating ? ` · nota ${c.rating}` : ''}`
+    : (() => {
+        try { return JSON.parse(c.reasons || '[]').slice(0, 2).join(' · '); } catch { return ''; }
+      })();
+  const linhaLocal = [c.address, prova].filter(Boolean).join(' · ');
+
+  const linhaLinks = [
     c.instagram
       ? `<a href="https://instagram.com/${esc(c.instagram.replace('@', ''))}" target="_blank" rel="noopener">${esc(c.instagram)}</a>`
       : '',
     c.website ? `<a href="${esc(c.website)}" target="_blank" rel="noopener">${esc(c.website)}</a>` : '',
-  ].filter(Boolean).join('<span class="sep">·</span>');
-
-  const prova = c.reviews
-    ? `${c.reviews} avaliações no Maps${c.rating ? ` · nota ${c.rating}` : ''}`
-    : (() => {
-        try { return JSON.parse(c.reasons || '[]').slice(0, 2).join(' · '); } catch { return ''; }
-      })();
+  ].filter(Boolean).join(' · ');
 
   // Dado da Receita: quem decide e o telefone registrado no CNPJ.
   const receita = [
@@ -330,9 +342,18 @@ function leadHtml(c) {
     <div class="lead-main">
       <div class="lead-name">${esc(c.name)}
         <span class="lead-score ${c.score >= 70 ? 'good' : ''}">${c.score ?? 0}</span></div>
-      <div class="lead-meta">${meta || 'sem canais encontrados'}</div>
-      ${prova ? `<div class="lead-why">${esc(prova)}</div>` : ''}
+      <div class="lead-meta">
+        ${linhaFone}
+        ${linhaLocal ? `<span>${esc(linhaLocal)}</span>` : ''}
+        ${linhaLinks ? `<span>${linhaLinks}</span>` : ''}
+      </div>
+      <div class="lead-bar"><div style="width:${Math.max(0, Math.min(100, c.score ?? 0))}%"></div></div>
       ${receita ? `<div class="lead-receita">${receita}</div>` : ''}
+      ${c.resumo_ligacao ? `<div class="lead-resumo">
+        <b>📝 resumo da ligação</b>
+        <p>${esc(c.resumo_ligacao)}</p>
+        ${c.gravacao_url ? `<audio controls preload="none" src="${esc(c.gravacao_url)}"></audio>` : ''}
+      </div>` : ''}
     </div>
     <div class="lead-botoes">
       <button class="btn ${salvo ? 'ghost' : 'accent'} lead-save-btn" data-id="${c.id}" ${c.phone_e164 ? '' : 'disabled title="sem telefone para ligar"'}>
@@ -360,6 +381,7 @@ async function toggleSave(id) {
   updateSaved();
   try {
     await api('/companies/' + id, { method: 'PATCH', body: { status: company.status } });
+    loadKpis();
   } catch { /* o painel já refletiu; o status volta na próxima carga */ }
 }
 
@@ -450,9 +472,9 @@ function renderCalls() {
             ? '<div class="handoff-line done">vendedor humano assumiu a ligação</div>'
             : '';
       return `<div class="call ${cls}">
-        <div class="nm">${esc(c.name)}</div>
-        <div class="ph">${esc(c.to)}</div>
-        <div class="st"><i></i>${esc(LABEL[c.status] ?? c.status)}</div>
+        <div class="top"><span class="nm">${esc(c.name)}</span><span class="dot-status"></span></div>
+        <span class="st">${esc(LABEL[c.status] ?? c.status)}</span>
+        <span class="ph">${esc(c.to)}</span>
         ${c.detail ? `<div class="sub-st">${esc(c.detail)}</div>` : ''}
         ${handoff}
       </div>`;
@@ -503,13 +525,16 @@ async function loadThreads() {
     return;
   }
   box.innerHTML = threads
-    .map(
-      (t) => `<div class="thread-item ${state.thread === t.phone ? 'active' : ''}"
+    .map((t) => {
+      const hora = t.last_at
+        ? new Date(t.last_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      return `<button class="thread-item ${state.thread === t.phone ? 'active' : ''}"
         data-phone="${esc(t.phone)}" data-company="${esc(t.company_id ?? '')}" data-name="${esc(t.company?.name ?? t.phone)}">
-        <div class="nm">${esc(t.company?.name ?? t.phone)}</div>
-        <div class="last">${esc(t.last_body ?? '')}</div>
-      </div>`
-    )
+        <span class="top"><span class="nm">${esc(t.company?.name ?? t.phone)}</span><span class="hora">${esc(hora)}</span></span>
+        <span class="last">${esc(t.last_body ?? '')}</span>
+      </button>`;
+    })
     .join('');
   $$('.thread-item').forEach((el) =>
     el.addEventListener('click', () => openThread(el.dataset.phone, el.dataset.company, el.dataset.name))
@@ -582,21 +607,32 @@ async function loadFila() {
   $('#fila-lista').innerHTML = fila
     .slice(1, 15)
     .map(
-      (c) => `<div class="lead"><div class="fila-item">
-        <div><div class="n">${esc(c.name)}</div><div class="t">${esc(c.phone_e164 ?? '')}</div></div>
-        <span class="lead-score ${c.score >= 70 ? 'good' : ''}">${c.score ?? 0}</span>
-      </div></div>`
+      (c, i) => `<div class="fila-item-row">
+        <span class="n">${i + 2}</span>
+        <span class="nome">${esc(c.name)}</span>
+        <span class="tel">${esc(c.phone_e164 ?? '')}</span>
+        <span class="score">${c.score ?? 0}</span>
+      </div>`
     )
+    .join('');
+
+  const conta = (status) => trabalhados.filter((c) => c.status === status).length;
+  $('#resumo-fila').innerHTML = [
+    ['Atenderam', conta('atendeu') + conta('falando com humano')],
+    ['Retornar depois', conta('retornar')],
+    ['Sem interesse', conta('sem interesse')],
+    ['Restantes', fila.length],
+  ]
+    .map(([lbl, valor]) => `<div><span>${esc(lbl)}</span><b>${valor}</b></div>`)
     .join('');
 }
 
 function atualizarDonut(feitos, restam) {
   const total = feitos + restam;
   const pct = total ? Math.round((feitos / total) * 100) : 0;
-  $('#fila-donut').style.setProperty('--pct', pct);
+  // circunferencia = 2*pi*r, com r=50 (mesmo raio do SVG) => 314.
+  $('#fila-donut').style.strokeDashoffset = String(314 - 3.14 * pct);
   $('#fila-donut-txt').textContent = pct + '%';
-  $('#fila-feitos-num').textContent = feitos;
-  $('#fila-total-num').textContent = total;
 }
 
 function mostrarLead(indice) {
@@ -761,6 +797,18 @@ function handle(ev) {
       renderCalls();
       break;
     }
+    case 'call:voicemail':
+      toast(`📼 ${ev.company?.name ?? 'Uma empresa'} caiu na caixa postal — chamada encerrada.`, 'warn');
+      break;
+    case 'call:gravacao':
+      toast('🎙️ Ligação gravada — disponível no lead.');
+      break;
+    case 'call:resumo': {
+      const c = state.companies.find((x) => x.id === ev.companyId);
+      if (c) { c.resumo_ligacao = ev.resumo; renderCompanies(state.companies); }
+      toast('📝 Resumo da ligação pronto — enviado ao CRM junto com o lead.');
+      break;
+    }
     case 'call:winner': {
       state.winnerCallId = ev.callId;
       const c = state.calls.get(ev.callId);
@@ -788,6 +836,7 @@ function handle(ev) {
     case 'campaign:end':
       $('#stop-campaign').hidden = true;
       $('#talk-tag').hidden = true;
+      loadKpis();
       break;
     case 'whatsapp:message':
       if (state.thread === ev.phone) openThread(ev.phone, ev.company_id ?? state.threadCompany, $('#thread-title').textContent);
@@ -861,6 +910,14 @@ async function carregarUsuario() {
     const eu = await api('/eu');
     $('#quem').textContent = eu.nome;
     $('#link-admin').hidden = eu.papel !== 'admin';
+    const iniciais = eu.nome
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase();
+    $('#user-avatar').textContent = iniciais || '·';
   } catch { /* sessão expirada: o próprio api() redireciona */ }
 }
 $('#sair').addEventListener('click', async () => {
@@ -896,6 +953,7 @@ function montarCardCrm(provedor, conectado) {
   card.dataset.provider = provedor.nome;
 
   card.querySelector('.crm-rotulo').textContent = provedor.rotulo;
+  card.querySelector('.crm-icon').textContent = provedor.rotulo.slice(0, 2).toUpperCase();
 
   const status = card.querySelector('.crm-status');
   status.textContent = conectado ? 'conectado' : 'desconectado';
@@ -985,9 +1043,27 @@ function montarCardCrm(provedor, conectado) {
   return card;
 }
 
+// ───────────────────────────────── busca do header
+// Filtro simples do que já está na tela: leads (Prospecção), fila (Discar) e
+// conversas (WhatsApp). Não busca no servidor - é só pra achar mais rápido
+// entre o que já foi carregado.
+$('#busca-geral').addEventListener('input', (e) => {
+  const termo = e.target.value.trim().toLowerCase();
+  const tabAtiva = $('.tab.active')?.dataset.tab;
+  const alvo =
+    tabAtiva === 'prospect' ? '#results .lead' :
+    tabAtiva === 'discar' ? '#fila-lista .fila-item-row' :
+    tabAtiva === 'whats' ? '.thread-item' : null;
+  if (!alvo) return;
+  $$(alvo).forEach((el) => {
+    el.hidden = Boolean(termo) && !el.textContent.toLowerCase().includes(termo);
+  });
+});
+
 carregarUsuario();
 loadStatus();
 loadCustos();
+loadKpis();
 loadLastSearch();
 loadActiveCampaign().then(restoreTab);
 // CRMs ativos determinam se o botao "Enviar ao CRM" aparece nos leads.

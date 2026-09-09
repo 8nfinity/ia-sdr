@@ -168,12 +168,23 @@ export function migrar() {
   for (const [col, tipo] of [
     ['cnpj', 'TEXT'], ['razao_social', 'TEXT'], ['situacao', 'TEXT'],
     ['decisor', 'TEXT'], ['socios', 'TEXT'], ['phone_receita', 'TEXT'], ['celular_responsavel', 'TEXT'], ['tipo_telefone', 'TEXT'],
+    // Gravacao/transcricao/resumo da ligacao vencedora, copiados para a
+    // empresa (nao so para a chamada) porque e a empresa que vai pro CRM.
+    ['gravacao_url', 'TEXT'], ['transcricao_texto', 'TEXT'], ['resumo_ligacao', 'TEXT'],
   ]) {
     if (!cEmp.includes(col)) db.exec('ALTER TABLE companies ADD COLUMN ' + col + ' ' + tipo);
   }
   if (!colunas.includes('custo_usd')) {
     db.exec('ALTER TABLE searches ADD COLUMN custo_usd REAL');
     db.exec('ALTER TABLE searches ADD COLUMN uso TEXT');
+  }
+
+  const cCalls = many('PRAGMA table_info(calls)').map((c) => c.name);
+  for (const [col, tipo] of [
+    ['recording_sid', 'TEXT'], ['recording_url', 'TEXT'],
+    ['transcript_sid', 'TEXT'], ['transcricao_status', 'TEXT'],
+  ]) {
+    if (cCalls.length && !cCalls.includes(col)) db.exec('ALTER TABLE calls ADD COLUMN ' + col + ' ' + tipo);
   }
 }
 

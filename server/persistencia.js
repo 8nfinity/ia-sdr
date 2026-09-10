@@ -95,6 +95,10 @@ function bancoTemUsuarios() {
 
 /** No boot: se o banco local está vazio e há backup remoto, restaura. */
 export async function restaurarSePrecisar() {
+  // Com Turso, a fonte da verdade é o Turso: a réplica local se reconstrói
+  // sozinha (db.sync no boot). Restaurar de um .db do R2 por cima só criaria
+  // conflito com a réplica.
+  if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) return;
   if (!backupRemotoAtivo()) return;
   if (bancoTemUsuarios()) return; // banco vivo, não mexe
 
@@ -142,14 +146,16 @@ export async function enviarBackup(buffer, motivo = 'periodico') {
 
 export const intervaloBackupMs = () => Math.max(5, cfg.intervaloMin) * 60000;
 
-/** Para o painel do admin: o backup remoto está ligado e quando foi o último. */
+/** Para o painel do admin: onde os dados vivem e a saúde do backup extra. */
 export async function statusBackup() {
-  if (!backupRemotoAtivo()) return { ativo: false, ultimo: null, intervaloMin: cfg.intervaloMin };
+  const turso = Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+  const base = { turso, ativo: backupRemotoAtivo(), intervaloMin: cfg.intervaloMin };
+  if (!base.ativo) return { ...base, ultimo: null };
   try {
     const backups = await listarBackups();
-    return { ativo: true, ultimo: backups[0]?.quando ?? null, total: backups.length, intervaloMin: cfg.intervaloMin };
+    return { ...base, ultimo: backups[0]?.quando ?? null, total: backups.length };
   } catch (err) {
-    return { ativo: true, ultimo: null, erro: err.message, intervaloMin: cfg.intervaloMin };
+    return { ...base, ultimo: null, erro: err.message };
   }
 }
 
@@ -158,6 +164,13 @@ export async function statusBackup() {
  * Só faz barulho quando DATA_DIR foi configurado (sinal de que é hospedagem).
  */
 export function diagnosticoPersistencia() {
+  if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
+    console.log('  [persistencia] Turso ATIVO - os dados vivem na nuvem, deploy nao encosta neles.');
+    if (backupRemotoAtivo()) {
+      console.log(`  [persistencia] + backup R2 como copia extra (a cada ${cfg.intervaloMin} min).`);
+    }
+    return;
+  }
   if (backupRemotoAtivo()) {
     console.log(`  [persistencia] backup remoto ATIVO (a cada ${cfg.intervaloMin} min + no encerramento).`);
   }

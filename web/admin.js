@@ -247,8 +247,8 @@ $('#arquivo-restaurar').addEventListener('change', async (e) => {
   const confirmado = confirm(
     `Restaurar "${arquivo.name}"?\n\n` +
       'Isso substitui TODOS os dados atuais (usuários, leads, campanhas) pelos ' +
-      'que estão dentro desse arquivo de backup, e reinicia o servidor.\n\n' +
-      'Essa ação não pode ser desfeita.'
+      'que estão dentro desse arquivo de backup.\n\n' +
+      'Essa ação não pode ser desfeita. Você será deslogado.'
   );
   if (!confirmado) return;
 
@@ -260,8 +260,8 @@ $('#arquivo-restaurar').addEventListener('change', async (e) => {
       leitor.readAsDataURL(arquivo);
     });
     const r = await api('/admin/restaurar', { method: 'POST', body: { arquivo: base64 } });
-    toast(r.aviso || 'Restaurando...');
-    setTimeout(() => location.reload(), 9000);
+    toast(r.aviso || 'Restaurado.');
+    setTimeout(() => (location.href = '/entrar.html'), 3000);
   } catch (err) {
     toast(err.message, true);
   }
@@ -310,9 +310,12 @@ async function carregarPersistencia() {
   try {
     const p = await api('/admin/persistencia');
     const el = $('#backup-remoto-status');
+    const prefixo = p.turso
+      ? 'Dados no Turso (nuvem) — deploy não apaga nada. '
+      : 'Dados em arquivo local — configure TURSO_* ou um volume persistente. ';
     if (!p.ativo) {
       el.textContent =
-        'Backup remoto: DESLIGADO. Configure BACKUP_S3_* no .env para não perder dados se o volume falhar.';
+        prefixo + 'Backup extra pro R2: desligado (opcional, protege contra exclusão acidental).';
       return;
     }
     $('#backup-agora').hidden = false;

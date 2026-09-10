@@ -1,5 +1,7 @@
-# Node 24: traz o SQLite embutido (node:sqlite) sem precisar compilar nada.
-FROM node:24-alpine
+# Node 24 "slim" (Debian): o driver do libsql (Turso) e um modulo nativo, e
+# o Debian tem prebuild pra tudo - no Alpine (musl) as vezes falta e o build
+# quebra. Alguns MB a mais de imagem, muito menos dor de cabeca.
+FROM node:24-slim
 
 WORKDIR /app
 

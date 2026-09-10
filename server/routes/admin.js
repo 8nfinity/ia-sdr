@@ -4,7 +4,10 @@
  */
 import express from 'express';
 import fs from 'node:fs';
-import { metricasAdmin, update, one, many, db, bancoEm } from '../db.js';
+import os from 'node:os';
+import path from 'node:path';
+import Database from 'libsql';
+import { metricasAdmin, update, one, many, db, bancoEm, usandoTurso } from '../db.js';
 import { listarUsuarios, buscarPorId, criarUsuario, trocarSenha, publico } from '../usuarios.js';
 import { log } from '../realtime.js';
 import { saldoTwilio, saldoAnthropicEstimado, registrarRecargaAnthropic } from '../saldo.js';
@@ -43,7 +46,8 @@ adminRouter.get(
 adminRouter.post(
   '/persistencia/backup',
   wrap(async (_req, res) => {
-    db.exec('PRAGMA wal_checkpoint(FULL);');
+    if (usandoTurso) { try { db.sync(); } catch { /* ok */ } }
+    try { db.exec('PRAGMA wal_checkpoint(FULL);'); } catch { /* replica */ }
     await enviarBackup(fs.readFileSync(bancoEm), 'manual');
     res.json(await statusBackup());
   })
@@ -68,6 +72,7 @@ adminRouter.post(
  * criar um volume persistente pela primeira vez.
  */
 adminRouter.get('/backup', (_req, res) => {
+  if (usandoTurso) { try { db.sync(); } catch { /* usa o que tiver na replica */ } }
   // Em modo WAL parte dos dados recentes fica num arquivo -wal à parte;
   // o checkpoint junta tudo de volta no arquivo principal antes de copiar.
   db.exec('PRAGMA wal_checkpoint(FULL);');
@@ -80,11 +85,10 @@ adminRouter.get('/backup', (_req, res) => {
 });
 
 /**
- * Restaura o banco a partir de um arquivo de backup (.db) enviado em base64,
- * no mesmo formato do endpoint acima. O SQLite já está com o arquivo atual
- * aberto, então só trocar o conteúdo não basta - o processo precisa reiniciar
- * pra reabrir o arquivo novo. A hospedagem sobe o processo de novo sozinha
- * (e o volume persistente, se houver, continua no lugar).
+ * Restaura o banco a partir de um arquivo de backup (.db) enviado em base64.
+ * Copia registro por registro do arquivo para o banco vivo, numa transação -
+ * assim funciona igual com SQLite local E com Turso (as escritas vao pro
+ * Turso na hora, sem precisar reiniciar nem trocar arquivo).
  */
 adminRouter.post(
   '/restaurar',
@@ -93,23 +97,40 @@ adminRouter.post(
     if (!arquivo) throw new Error('Envie o arquivo de backup (.db).');
     const base64 = arquivo.includes(',') ? arquivo.split(',')[1] : arquivo;
     const buffer = Buffer.from(base64, 'base64');
-    const cabecalho = Buffer.from('SQLite format 3\x00', 'latin1');
-    if (!buffer.subarray(0, 16).equals(cabecalho)) {
+    if (buffer.subarray(0, 15).toString('latin1') !== 'SQLite format 3') {
       throw new Error('Esse arquivo não parece um backup válido do IA SDR (esperado um .db do SQLite).');
     }
 
-    log('admin', `restaurando banco a partir de um backup de ${(buffer.length / 1024).toFixed(0)} KB — reiniciando...`);
-    res.json({ ok: true, aviso: 'Restaurando e reiniciando o servidor. Aguarde uns 10 segundos e recarregue a página.' });
+    const tmp = path.join(os.tmpdir(), `iasdr-restaurar-${Date.now()}.db`);
+    fs.writeFileSync(tmp, buffer);
+    let copiados = 0;
+    try {
+      const origem = new Database(tmp, { readonly: true });
+      const tabelas = origem
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        .all()
+        .map((r) => r.name);
 
-    // Responde antes de derrubar o processo, senão o navegador nunca recebe o OK.
-    setTimeout(() => {
-      try { db.close(); } catch { /* segue o baile */ }
-      for (const sufixo of ['-wal', '-shm']) {
-        try { fs.rmSync(bancoEm + sufixo); } catch { /* pode não existir */ }
-      }
-      fs.writeFileSync(bancoEm, buffer);
-      process.exit(0);
-    }, 400);
+      const aplicar = db.transaction(() => {
+        for (const t of tabelas) {
+          const linhas = origem.prepare(`SELECT * FROM ${t}`).all();
+          db.exec(`DELETE FROM ${t}`);
+          if (!linhas.length) continue;
+          const colunas = Object.keys(linhas[0]).filter((c) => c !== '_metadata');
+          const ins = db.prepare(
+            `INSERT INTO ${t} (${colunas.join(',')}) VALUES (${colunas.map(() => '?').join(',')})`
+          );
+          for (const l of linhas) { ins.run(...colunas.map((c) => l[c] ?? null)); copiados++; }
+        }
+      });
+      aplicar();
+      origem.close();
+    } finally {
+      try { fs.rmSync(tmp); } catch { /* ok */ }
+    }
+
+    log('admin', `banco restaurado de um backup: ${copiados} registros.`);
+    res.json({ ok: true, aviso: `Restaurado (${copiados} registros). Recarregue a página.` });
   })
 );
 

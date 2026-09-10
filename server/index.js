@@ -16,7 +16,7 @@ import { pagamentosRouter } from './routes/pagamentos.js';
 import { webhooksMpRouter } from './routes/webhooks-mp.js';
 import { twimlRouter } from './voice/twiml.js';
 import { whatsappRouter } from './whatsapp/index.js';
-import { registrarUso, bancoEm, getSetting, definirDonoAtual, db } from './db.js';
+import { registrarUso, bancoEm, getSetting, definirDonoAtual, db, usandoTurso } from './db.js';
 import { idDoUsuario } from './contexto.js';
 import { instalarAuth } from './auth.js';
 import { limitar } from './limites.js';
@@ -212,7 +212,8 @@ server.listen(config.port, () => {
 
 // ─── backup remoto do banco (protege contra container descartado no deploy) ──
 function bufferDoBanco() {
-  db.exec('PRAGMA wal_checkpoint(FULL);'); // junta o -wal no arquivo principal
+  if (usandoTurso) { try { db.sync(); } catch { /* usa o que tiver na replica */ } }
+  try { db.exec('PRAGMA wal_checkpoint(FULL);'); } catch { /* replica gerencia */ }
   return fs.readFileSync(bancoEm);
 }
 

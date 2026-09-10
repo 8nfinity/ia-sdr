@@ -1,18 +1,72 @@
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'libsql';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { uid, nowIso } from './util.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// DATA_DIR permite apontar para o disco persistente da hospedagem
-// (Railway, Render, Fly). Sem ele, usa a pasta data/ do projeto.
+// DATA_DIR: sem Turso, e onde o arquivo SQLite vive (idealmente um volume
+// persistente). Com Turso, e so o cache local da replica - pode sumir a
+// vontade, a fonte da verdade e o Turso.
 const dataDir = process.env.DATA_DIR || path.join(here, '..', 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 
 export const bancoEm = path.join(dataDir, 'iasdr.db');
-export const db = new DatabaseSync(bancoEm);
-db.exec('PRAGMA journal_mode = WAL;');
+
+/**
+ * Com TURSO_DATABASE_URL + TURSO_AUTH_TOKEN definidos, o banco vira uma
+ * "embedded replica": leituras saem do arquivo local (rapidas), e TODA
+ * escrita e enviada na hora para o Turso (write-through - o dado so e
+ * "gravado" quando o Turso confirma). Deploy nao encosta mais nos dados:
+ * o container e descartavel, o Turso guarda tudo.
+ * Sem as variaveis, cai no SQLite local de sempre (dev, ou volume).
+ */
+export const usandoTurso = Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+export const db = usandoTurso
+  ? new Database(bancoEm, {
+      syncUrl: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+      syncInterval: 60, // segundos: puxa mudancas feitas por outros clientes/dashboard
+    })
+  : new Database(bancoEm);
+
+// Puxa o estado atual do Turso ANTES de criar tabelas: numa replica novinha
+// (container recem-criado no deploy) e isso que traz de volta todos os dados.
+//
+// Se o Turso estiver inacessivel, NAO adianta continuar: com "embedded
+// replica" toda escrita e delegada ao primario, entao ate o CREATE TABLE
+// abaixo falharia. Melhor parar com uma mensagem clara do que subir num
+// estado quebrado (ou pior, num banco local vazio fingindo que esta tudo bem).
+if (usandoTurso) {
+  let ok = false;
+  for (let tentativa = 1; tentativa <= 4 && !ok; tentativa++) {
+    try {
+      db.sync();
+      ok = true;
+    } catch (err) {
+      if (tentativa === 4) {
+        console.error('');
+        console.error('  ================================================================');
+        console.error('  NAO CONSEGUI FALAR COM O TURSO.');
+        console.error('  ================================================================');
+        console.error(`  Erro: ${err.message}`);
+        console.error('');
+        console.error('  Confira TURSO_DATABASE_URL (comeca com libsql://) e');
+        console.error('  TURSO_AUTH_TOKEN nas variaveis de ambiente. Gere um token novo');
+        console.error('  com:  turso db tokens create <seu-banco>');
+        console.error('');
+        process.exit(1);
+      }
+      const espera = tentativa * 2000;
+      console.error(`  [db] Turso nao respondeu (tentativa ${tentativa}/4). Tentando de novo em ${espera / 1000}s...`);
+      await new Promise((r) => setTimeout(r, espera));
+    }
+  }
+  console.log('  [db] replica sincronizada com o Turso.');
+}
+
+try { db.exec('PRAGMA journal_mode = WAL;'); } catch { /* replica gerencia o journal */ }
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS searches (
   id TEXT PRIMARY KEY, segment TEXT, region TEXT, quantity INTEGER,
@@ -97,8 +151,14 @@ export function update(table, id, patch) {
   db.prepare(`UPDATE ${table} SET ${keys.map((k) => `${k}=?`).join(',')} WHERE id=?`)
     .run(...keys.map((k) => patch[k] ?? null), id);
 }
-export const one = (sql, ...params) => db.prepare(sql).get(...params) ?? null;
-export const many = (sql, ...params) => db.prepare(sql).all(...params);
+// O driver do libsql cola um campo "_metadata" em cada linha. Inofensivo,
+// mas polui as respostas JSON da API - tira aqui, na fonte.
+const semMeta = (r) => {
+  if (r && typeof r === 'object' && '_metadata' in r) delete r._metadata;
+  return r;
+};
+export const one = (sql, ...params) => semMeta(db.prepare(sql).get(...params)) ?? null;
+export const many = (sql, ...params) => db.prepare(sql).all(...params).map(semMeta);
 
 // ---------- helpers de dominio ----------
 

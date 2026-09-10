@@ -36,6 +36,9 @@
       <button class="tab" data-tab="whats">
         <span class="tab-dot"></span><span class="tab-label">WhatsApp</span>
       </button>
+      <button class="tab" data-tab="resultados">
+        <span class="tab-dot"></span><span class="tab-label">Resultados</span>
+      </button>
       <button class="tab" data-tab="crm">
         <span class="tab-dot"></span><span class="tab-label">Integrações</span>
       </button>
@@ -225,6 +228,7 @@
           <div class="la-resultado">
             <span>Como foi?</span>
             <button class="btn sm" data-resultado="atendeu">Atendeu</button>
+            <button class="btn sm accent" id="la-reuniao">📅 Marcou reunião</button>
             <button class="btn sm" data-resultado="nao atendeu">Não atendeu</button>
             <button class="btn sm" data-resultado="retornar">Retornar depois</button>
             <button class="btn sm" data-resultado="sem interesse">Sem interesse</button>
@@ -278,6 +282,40 @@
       </div>
     </section>
 
+    <!-- ═══════════════════════════ RESULTADOS ═══════════════════════════ -->
+    <section id="tab-resultados" class="view">
+      <div class="row-head">
+        <div>
+          <h1>Resultados</h1>
+          <p class="sub">Seu funil de prospecção: quanto discou, quantos atenderam, quantas reuniões saíram.</p>
+        </div>
+        <div class="actions" id="resultados-periodo">
+          <button class="btn ghost sm" data-dias="7">7 dias</button>
+          <button class="btn ghost sm active" data-dias="30">30 dias</button>
+          <button class="btn ghost sm" data-dias="90">90 dias</button>
+          <button class="btn ghost sm" data-dias="0">Tudo</button>
+        </div>
+      </div>
+
+      <div class="kpis" id="resultados-kpis"></div>
+
+      <div class="funil" id="funil"></div>
+
+      <div class="two-col">
+        <div class="box">
+          <div class="box-head"><h2>Ligações por dia</h2></div>
+          <div class="grafico" id="resultados-grafico"><div class="empty">Sem dados no período.</div></div>
+        </div>
+        <div class="box">
+          <div class="box-head"><h2>Por resultado</h2></div>
+          <div id="resultados-breakdown" class="resumo-fila" style="padding:16px"></div>
+        </div>
+      </div>
+
+      <div class="results-head"><h2>Próximas reuniões <span class="count" id="reunioes-count">0</span></h2></div>
+      <div id="reunioes-lista" style="display:flex;flex-direction:column;gap:9px"></div>
+    </section>
+
     <!-- ═══════════════════════════ INTEGRAÇÕES (CRM) ═══════════════════════════ -->
     <section id="tab-crm" class="view">
       <div>
@@ -305,7 +343,11 @@
     <div class="crm-campos"></div>
     <label class="switch crm-auto">
       <input type="checkbox" /><span class="track"></span>
-      Sincronizar automaticamente
+      Enviar leads automaticamente
+    </label>
+    <label class="switch crm-auto-reuniao">
+      <input type="checkbox" /><span class="track"></span>
+      Criar reunião no CRM automaticamente
     </label>
     <div class="crm-erro" hidden></div>
     <div class="crm-acoes">
@@ -316,6 +358,31 @@
     <div class="crm-info"></div>
   </div>
 </template>
+
+<!-- Diálogo de agendamento de reunião -->
+<dialog id="reuniao-dialog" class="reuniao-dialog">
+  <form method="dialog" id="reuniao-form">
+    <h2 id="reuniao-empresa">Agendar reunião</h2>
+    <label class="campo">Data e hora
+      <input type="datetime-local" id="reuniao-quando" required />
+    </label>
+    <label class="campo">Duração
+      <select id="reuniao-duracao">
+        <option value="15">15 min</option>
+        <option value="30" selected>30 min</option>
+        <option value="45">45 min</option>
+        <option value="60">1 hora</option>
+      </select>
+    </label>
+    <label class="campo">Observações (opcional)
+      <input type="text" id="reuniao-notas" placeholder="Ex: enviar proposta antes" />
+    </label>
+    <div class="reuniao-acoes">
+      <button type="button" class="btn ghost sm" id="reuniao-cancelar">Cancelar</button>
+      <button type="submit" class="btn accent sm" id="reuniao-confirmar">Agendar</button>
+    </div>
+  </form>
+</dialog>
 
 <div id="toast" class="toast" hidden></div>
 <script src="app.js"></script>

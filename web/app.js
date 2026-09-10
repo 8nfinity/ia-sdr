@@ -95,6 +95,7 @@ $$('.tab[data-tab]').forEach((btn) =>
     if (btn.dataset.tab === 'whats') loadThreads();
     if (btn.dataset.tab === 'discar') loadFila();
     if (btn.dataset.tab === 'crm') loadCrm();
+    if (btn.dataset.tab === 'resultados') loadResultados();
   })
 );
 const goTo = (tab) => $$('.tab[data-tab]').find((b) => b.dataset.tab === tab)?.click();
@@ -323,6 +324,9 @@ function renderCompanies(list) {
   $('#summary').textContent = `${list.length} empresas · ${comTel} com telefone · score médio ${media}`;
 
   $$('.lead-save-btn').forEach((btn) => btn.addEventListener('click', () => toggleSave(btn.dataset.id)));
+  $$('.lead-reuniao-btn').forEach((btn) =>
+    btn.addEventListener('click', () => abrirReuniao(btn.dataset.id, btn.dataset.nome))
+  );
   $$('.lead-crm-btn').forEach((btn) =>
     btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -399,6 +403,7 @@ function leadHtml(c) {
       <button class="btn ${salvo ? 'ghost' : 'accent'} lead-save-btn" data-id="${c.id}" ${c.phone_e164 ? '' : 'disabled title="sem telefone para ligar"'}>
         ${salvo ? 'Lead salvo ✓' : 'Salvar como lead'}
       </button>
+      <button class="btn ghost sm lead-reuniao-btn" data-id="${c.id}" data-nome="${esc(c.name)}">📅 Agendar reunião</button>
       ${temCrm ? `<button class="btn ghost sm lead-crm-btn" data-id="${c.id}" title="Enviar para o CRM conectado">Enviar ao CRM</button>` : ''}
     </div>
   </div>`;
@@ -747,6 +752,10 @@ document.querySelectorAll('[data-resultado]').forEach((btn) =>
 
 $('#la-pular').addEventListener('click', avancar);
 
+$('#la-reuniao').addEventListener('click', () => {
+  if (state.atual) abrirReuniao(state.atual.id, state.atual.name);
+});
+
 $('#la-copiar').addEventListener('click', async () => {
   if (!state.atual?.phone_e164) return;
   try {
@@ -967,6 +976,144 @@ $('#sair').addEventListener('click', async () => {
   location.href = '/entrar.html';
 });
 
+// ───────────────────────────────── resultados (funil do cliente)
+state.resultadosDias = 30;
+
+async function loadResultados() {
+  try {
+    const r = await api('/resultados?dias=' + state.resultadosDias);
+    const f = r.funil;
+
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '—');
+    $('#resultados-kpis').innerHTML = [
+      ['Ligações discadas', f.ligacoes, ''],
+      ['Atenderam', f.atenderam, pct(f.atenderam, f.ligacoes) + ' de atendimento'],
+      ['Reuniões marcadas', f.reunioes, pct(f.reunioes, f.atenderam) + ' de quem atendeu'],
+      ['Reuniões realizadas', f.reunioesRealizadas, ''],
+    ]
+      .map(
+        ([lbl, num, sub]) =>
+          `<div class="kpi"><span class="kpi-lbl">${esc(lbl)}</span><span class="kpi-num">${esc(num)}</span>${
+            sub ? `<span class="kpi-delta up">${esc(sub)}</span>` : ''
+          }</div>`
+      )
+      .join('');
+
+    // Funil (barras proporcionais à etapa mais larga).
+    const etapas = [
+      ['Buscas', f.buscas],
+      ['Leads encontrados', f.leads],
+      ['Leads salvos', f.leadsSalvos],
+      ['Ligações', f.ligacoes],
+      ['Atenderam', f.atenderam],
+      ['Reuniões', f.reunioes],
+    ];
+    const maior = Math.max(...etapas.map(([, v]) => v), 1);
+    $('#funil').innerHTML = etapas
+      .map(
+        ([lbl, v], i) => `<div class="funil-linha">
+          <span class="funil-lbl">${esc(lbl)}</span>
+          <div class="funil-barra"><div style="width:${Math.max(3, Math.round((v / maior) * 100))}%"></div></div>
+          <span class="funil-num">${v}${i > 0 && etapas[i - 1][1] ? ` · ${Math.round((v / etapas[i - 1][1]) * 100)}%` : ''}</span>
+        </div>`
+      )
+      .join('');
+
+    // Gráfico de ligações/atendimentos por dia.
+    const box = $('#resultados-grafico');
+    if (!r.porDia.length) {
+      box.innerHTML = '<div class="empty">Sem ligações no período.</div>';
+    } else {
+      const max = Math.max(...r.porDia.map((d) => d.ligacoes), 1);
+      box.innerHTML = r.porDia
+        .map((d) => {
+          const h = Math.max(3, Math.round((d.ligacoes / max) * 100));
+          const dia = d.dia.slice(8) + '/' + d.dia.slice(5, 7);
+          return `<div class="barra" title="${dia}: ${d.ligacoes} ligações, ${d.atenderam} atenderam">
+            <div class="barra-valor" style="height:${h}%"></div><span>${dia}</span></div>`;
+        })
+        .join('');
+    }
+
+    $('#resultados-breakdown').innerHTML = r.porResultado.length
+      ? r.porResultado
+          .map((x) => `<div><span>${esc(x.status)}</span><b>${x.total}</b></div>`)
+          .join('')
+      : '<div class="empty" style="background:none;border:none">Nenhum lead trabalhado ainda.</div>';
+
+    // Próximas reuniões.
+    $('#reunioes-count').textContent = r.proximasReunioes.length;
+    $('#reunioes-lista').innerHTML = r.proximasReunioes.length
+      ? r.proximasReunioes
+          .map(
+            (m) => `<div class="fila-item-row">
+              <span class="n">📅</span>
+              <span class="nome">${esc(m.empresa ?? '—')}${m.titulo ? ` — ${esc(m.titulo)}` : ''}</span>
+              <span class="tel">${new Date(m.quando).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+              ${m.crm_url ? `<a class="link" href="${esc(m.crm_url)}" target="_blank" rel="noopener">CRM</a>` : ''}
+            </div>`
+          )
+          .join('')
+      : '<div class="empty">Nenhuma reunião agendada.</div>';
+  } catch (err) {
+    toast('Resultados: ' + err.message, true);
+  }
+}
+
+document.querySelectorAll('#resultados-periodo [data-dias]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#resultados-periodo [data-dias]').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.resultadosDias = Number(btn.dataset.dias);
+    loadResultados();
+  })
+);
+
+// ───────────────────────────────── agendamento de reunião
+const dlg = $('#reuniao-dialog');
+let reuniaoAlvo = null;
+
+function abrirReuniao(companyId, nomeEmpresa) {
+  reuniaoAlvo = companyId;
+  $('#reuniao-empresa').textContent = 'Agendar reunião — ' + (nomeEmpresa || '');
+  // Default: amanhã 10:00, no formato do input datetime-local (hora local).
+  const d = new Date(Date.now() + 86400000);
+  d.setHours(10, 0, 0, 0);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  $('#reuniao-quando').value = local;
+  $('#reuniao-notas').value = '';
+  dlg.showModal();
+}
+
+$('#reuniao-cancelar').addEventListener('click', () => dlg.close());
+
+$('#reuniao-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!reuniaoAlvo) return;
+  const btn = $('#reuniao-confirmar');
+  btn.disabled = true;
+  try {
+    await api('/reunioes', {
+      method: 'POST',
+      body: {
+        companyId: reuniaoAlvo,
+        // datetime-local vem em hora local sem fuso; o Date() interpreta como local.
+        quando: new Date($('#reuniao-quando').value).toISOString(),
+        duracaoMin: Number($('#reuniao-duracao').value),
+        notas: $('#reuniao-notas').value.trim() || undefined,
+      },
+    });
+    dlg.close();
+    toast('Reunião agendada.' + ((state.crmAtivos ?? []).length ? ' Enviando ao CRM…' : ''));
+    loadPlano();
+    if ($('.tab.active')?.dataset.tab === 'discar') loadFila();
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ───────────────────────────────── integrações (CRM)
 /**
  * Cada CRM tem um ou mais campos declarados pelo servidor (campos[]), entao o
@@ -1015,6 +1162,8 @@ function montarCardCrm(provedor, conectado) {
 
   const auto = card.querySelector('.crm-auto input');
   auto.checked = Boolean(conectado?.autoSync);
+  const autoReuniao = card.querySelector('.crm-auto-reuniao input');
+  autoReuniao.checked = Boolean(conectado?.autoReuniao);
 
   const erroBox = card.querySelector('.crm-erro');
   if (conectado?.ultimoErro) {
@@ -1049,7 +1198,7 @@ function montarCardCrm(provedor, conectado) {
     try {
       await api('/crm/' + provedor.nome, {
         method: 'POST',
-        body: { config: lerConfig(), autoSync: auto.checked },
+        body: { config: lerConfig(), autoSync: auto.checked, autoReuniao: autoReuniao.checked },
       });
       toast(`${provedor.rotulo} conectado.`);
       loadCrm();

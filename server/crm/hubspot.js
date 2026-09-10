@@ -95,6 +95,36 @@ export const hubspot = {
   },
 };
 
+hubspot.agendarReuniao = async function ({ apiToken }, company, reuniao, contactId) {
+  const inicio = new Date(reuniao.quando).getTime();
+  const fim = inicio + (Number(reuniao.duracao_min) || 30) * 60000;
+  const corpo = {
+    properties: {
+      hs_timestamp: inicio,
+      hs_meeting_title: reuniao.titulo || `Reunião com ${company.name}`,
+      hs_meeting_body: reuniao.notas || `Reunião agendada pelo IA SDR com ${company.name}.`,
+      hs_meeting_start_time: inicio,
+      hs_meeting_end_time: fim,
+    },
+    // 200 = associação padrão da HubSpot "reunião -> contato".
+    ...(contactId
+      ? {
+          associations: [
+            { to: { id: contactId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 200 }] },
+          ],
+        }
+      : {}),
+  };
+  const res = await fetchWithTimeout(
+    `${BASE}/crm/v3/objects/meetings`,
+    { method: 'POST', headers: cabecalho(apiToken), body: JSON.stringify(corpo) },
+    12000
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message ?? `HubSpot (reunião): HTTP ${res.status}`);
+  return { externalId: data.id, url: contactId ? `https://app.hubspot.com/contacts/${contactId}` : null };
+};
+
 async function anexarNota(apiToken, contactId, company) {
   const corpo =
     `<b>Resumo da ligação (IA SDR)</b><br>${(company.resumo_ligacao ?? '').replace(/\n/g, '<br>')}` +

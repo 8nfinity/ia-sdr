@@ -1,6 +1,7 @@
 import express from 'express';
 import { config, integrationStatus, voiceMode, telefoneDoVendedor, definirVendedorSalvo } from '../config.js';
-import { one, many, getCompany, listCompanies, update, resumoDeCustos, setSetting, insert, saveCompany, gastoDoUsuario } from '../db.js';
+import { one, many, getCompany, listCompanies, update, resumoDeCustos, setSetting, insert, saveCompany, gastoDoUsuario, metricasCliente } from '../db.js';
+import { agendarReuniao, atualizarReuniao, listarReunioes } from '../reunioes.js';
 import { uid, toE164BR, isPlausiblePhone, tipoTelefone, nowIso } from '../util.js';
 import { log, emit } from '../realtime.js';
 import { filtroDoDono, usuarioAtual, ehAdmin } from '../contexto.js';
@@ -76,6 +77,32 @@ apiRouter.get('/custos', (_req, res) => {
     },
   });
 });
+
+/** Painel de resultados do cliente: funil de prospeccao no periodo. */
+apiRouter.get('/resultados', (req, res) => {
+  const dias = Math.max(0, Math.min(365, Number(req.query.dias) || 30));
+  res.json(metricasCliente(ehAdmin() ? null : usuarioAtual()?.id, dias));
+});
+
+// --------------------------------------------------------------- reunioes
+apiRouter.get('/reunioes', (req, res) => res.json(listarReunioes(req.usuario.id)));
+
+apiRouter.post(
+  '/reunioes',
+  wrap(async (req, res) => {
+    const { companyId, quando, duracaoMin, titulo, notas } = req.body ?? {};
+    if (!companyId) throw new Error('Lead não informado.');
+    const reuniao = agendarReuniao({ userId: req.usuario.id, companyId, quando, duracaoMin, titulo, notas });
+    res.json(reuniao);
+  })
+);
+
+apiRouter.patch(
+  '/reunioes/:id',
+  wrap(async (req, res) => {
+    res.json(atualizarReuniao(req.params.id, req.body ?? {}));
+  })
+);
 
 /** KPIs globais do usuario (topo do painel, visivel em qualquer aba). */
 apiRouter.get('/estatisticas', (_req, res) => {

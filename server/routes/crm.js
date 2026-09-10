@@ -28,7 +28,7 @@ crmRouter.get('/', (req, res) => res.json(integracoesDoUsuario(req.usuario.id)))
 crmRouter.post(
   '/:provider',
   wrap(async (req, res) => {
-    const { autoSync } = req.body ?? {};
+    const { autoSync, autoReuniao } = req.body ?? {};
     // Resolve campos deixados com a mascara/em branco usando o valor ja
     // salvo, para "so mudar o auto-sync" nao apagar a chave gravada.
     const config = resolverConfig(req.usuario.id, req.params.provider, req.body?.config ?? {});
@@ -37,6 +37,7 @@ crmRouter.post(
       provider: req.params.provider,
       config,
       autoSync: Boolean(autoSync),
+      autoReuniao: Boolean(autoReuniao),
     });
     res.json({ ok: true, ...resultado });
   })

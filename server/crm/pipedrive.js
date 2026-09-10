@@ -62,6 +62,34 @@ export const pipedrive = {
 
     return { externalId: idPessoa, url: `https://app.pipedrive.com/person/${idPessoa}` };
   },
+
+  /** Cria uma atividade do tipo "meeting" na agenda do Pipedrive. */
+  async agendarReuniao({ apiToken }, company, reuniao, personId) {
+    const d = new Date(reuniao.quando);
+    const iso = d.toISOString();
+    const dur = Number(reuniao.duracao_min) || 30;
+    const corpo = {
+      subject: reuniao.titulo || `Reunião com ${company.name}`,
+      type: 'meeting',
+      due_date: iso.slice(0, 10),
+      due_time: iso.slice(11, 16), // UTC HH:MM, como o Pipedrive espera
+      duration: `${String(Math.floor(dur / 60)).padStart(2, '0')}:${String(dur % 60).padStart(2, '0')}`,
+      done: 0,
+      ...(personId ? { person_id: Number(personId) } : {}),
+      ...(reuniao.notas ? { note: reuniao.notas } : {}),
+    };
+    const res = await fetchWithTimeout(
+      `${base()}/api/v1/activities?api_token=${encodeURIComponent(apiToken)}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) },
+      12000
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) throw new Error(data?.error ?? `Pipedrive (reunião): HTTP ${res.status}`);
+    return {
+      externalId: String(data.data.id),
+      url: personId ? `https://app.pipedrive.com/person/${personId}` : null,
+    };
+  },
 };
 
 async function anexarNota({ apiToken }, personId, company) {

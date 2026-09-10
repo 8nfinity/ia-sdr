@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS pagamentos_mp (
   status TEXT, mp_id TEXT, external_reference TEXT, detalhe TEXT, created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pagamentos_mp_id ON pagamentos_mp(mp_id);
+CREATE TABLE IF NOT EXISTS reunioes (
+  id TEXT PRIMARY KEY, user_id TEXT, company_id TEXT, campaign_id TEXT,
+  quando TEXT, duracao_min INTEGER DEFAULT 30, titulo TEXT, notas TEXT,
+  status TEXT DEFAULT 'agendada',
+  crm_provider TEXT, crm_external_id TEXT, crm_url TEXT, crm_status TEXT,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reunioes_user ON reunioes(user_id);
+CREATE INDEX IF NOT EXISTS idx_reunioes_company ON reunioes(company_id);
 CREATE TABLE IF NOT EXISTS uso (
   id TEXT PRIMARY KEY, tipo TEXT, ref_id TEXT, modelo TEXT,
   entrada INTEGER, saida INTEGER, cache INTEGER, buscas INTEGER,
@@ -63,7 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_phone ON messages(phone);
 // automaticamente no insert: assim nenhuma parte do sistema pode esquecer de
 // marcar quem é o dono e acabar misturando dados de clientes diferentes.
 const TABELAS_COM_DONO = new Set([
-  'searches', 'companies', 'campaigns', 'calls', 'messages', 'uso', 'wa_fila',
+  'searches', 'companies', 'campaigns', 'calls', 'messages', 'uso', 'wa_fila', 'reunioes',
 ]);
 
 let donoAtual = () => null;
@@ -253,6 +262,58 @@ export function resumoDeCustos(userId = null) {
 /** Quanto o usuario ja gastou (usado para o limite de gasto). */
 export const gastoDoUsuario = (userId) =>
   one('SELECT COALESCE(SUM(usd),0) usd FROM uso WHERE user_id=?', userId)?.usd ?? 0;
+
+/**
+ * Painel de resultados do CLIENTE: o funil de prospeccao dele no periodo.
+ * userId nulo = visao geral (admin). dias = 0 significa "desde sempre".
+ */
+export function metricasCliente(userId = null, dias = 30) {
+  const desde = dias > 0 ? new Date(Date.now() - dias * 86400000).toISOString() : '0000';
+  const fU = userId ? ' AND user_id=?' : '';
+  const pU = userId ? [userId] : [];
+  const n = (sql, ...args) => one(sql, ...args)?.v ?? 0;
+
+  const funil = {
+    buscas: n(
+      `SELECT COUNT(*) v FROM searches WHERE created_at>=?${fU} AND (source IS NULL OR source<>'planilha')`,
+      desde, ...pU
+    ),
+    leads: n(`SELECT COUNT(*) v FROM companies WHERE created_at>=?${fU}`, desde, ...pU),
+    leadsSalvos: n(`SELECT COUNT(*) v FROM companies WHERE created_at>=?${fU} AND status<>'novo'`, desde, ...pU),
+    ligacoes: n(`SELECT COUNT(*) v FROM calls WHERE created_at>=?${fU}`, desde, ...pU),
+    atenderam: n(`SELECT COUNT(*) v FROM calls WHERE created_at>=?${fU} AND is_winner=1`, desde, ...pU),
+    caixaPostal: n(`SELECT COUNT(*) v FROM calls WHERE created_at>=?${fU} AND status='voicemail'`, desde, ...pU),
+    reunioes: n(`SELECT COUNT(*) v FROM reunioes WHERE created_at>=?${fU} AND status<>'cancelada'`, desde, ...pU),
+    reunioesRealizadas: n(`SELECT COUNT(*) v FROM reunioes WHERE created_at>=?${fU} AND status='realizada'`, desde, ...pU),
+  };
+  funil.naoAtenderam = Math.max(0, funil.ligacoes - funil.atenderam - funil.caixaPostal);
+
+  const porDia = many(
+    `SELECT substr(created_at,1,10) dia, COUNT(*) ligacoes,
+       SUM(CASE WHEN is_winner=1 THEN 1 ELSE 0 END) atenderam
+     FROM calls WHERE created_at>=?${fU} GROUP BY dia ORDER BY dia`,
+    desde, ...pU
+  );
+
+  const porResultado = many(
+    `SELECT status, COUNT(*) total FROM companies
+     WHERE created_at>=?${fU} AND status NOT IN ('novo','lead') GROUP BY status ORDER BY total DESC`,
+    desde, ...pU
+  );
+
+  // Proximas reunioes (do periodo pra frente, ainda nao realizadas).
+  const fUR = userId ? ' AND r.user_id=?' : '';
+  const proximasReunioes = many(
+    `SELECT r.id, r.quando, r.duracao_min, r.titulo, r.status, r.crm_url,
+       (SELECT name FROM companies WHERE id=r.company_id) empresa,
+       (SELECT phone_e164 FROM companies WHERE id=r.company_id) telefone
+     FROM reunioes r
+     WHERE r.status='agendada'${fUR} ORDER BY r.quando ASC LIMIT 30`,
+    ...pU
+  );
+
+  return { periodoDias: dias, funil, porDia, porResultado, proximasReunioes };
+}
 
 /** Painel do administrador: um retrato de cada usuario e do sistema. */
 export function metricasAdmin() {

@@ -12,7 +12,7 @@ import { webhook } from './webhook.js';
 db.exec(`
 CREATE TABLE IF NOT EXISTS crm_integracoes (
   id TEXT PRIMARY KEY, user_id TEXT, provider TEXT, config_enc TEXT,
-  ativo INTEGER DEFAULT 1, auto_sync INTEGER DEFAULT 0,
+  ativo INTEGER DEFAULT 1, auto_sync INTEGER DEFAULT 0, auto_reuniao INTEGER DEFAULT 0,
   ultimo_erro TEXT, ultima_sincronizacao TEXT, created_at TEXT,
   UNIQUE(user_id, provider)
 );
@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS crm_sincronizacoes (
 );
 CREATE INDEX IF NOT EXISTS idx_crm_sinc_company ON crm_sincronizacoes(company_id);
 `);
+// Banco antigo: adiciona a coluna nova sem quebrar.
+try {
+  const cols = many('PRAGMA table_info(crm_integracoes)').map((c) => c.name);
+  if (!cols.includes('auto_reuniao')) db.exec('ALTER TABLE crm_integracoes ADD COLUMN auto_reuniao INTEGER DEFAULT 0');
+} catch { /* tabela recem criada ja tem a coluna */ }
 
 export const PROVEDORES = { pipedrive, hubspot, webhook };
 export const listarProvedores = () =>
@@ -59,6 +64,7 @@ export function integracoesDoUsuario(userId) {
       rotulo: provider?.rotulo ?? row.provider,
       ativo: Boolean(row.ativo),
       autoSync: Boolean(row.auto_sync),
+      autoReuniao: Boolean(row.auto_reuniao),
       config: mascarada,
       ultimoErro: row.ultimo_erro,
       ultimaSincronizacao: row.ultima_sincronizacao,
@@ -66,7 +72,7 @@ export function integracoesDoUsuario(userId) {
   });
 }
 
-export async function salvarIntegracao({ userId, provider, config, autoSync }) {
+export async function salvarIntegracao({ userId, provider, config, autoSync, autoReuniao }) {
   const adaptador = PROVEDORES[provider];
   if (!adaptador) throw new Error('CRM desconhecido.');
 
@@ -76,6 +82,7 @@ export async function salvarIntegracao({ userId, provider, config, autoSync }) {
     config_enc: encriptar(JSON.stringify(config)),
     ativo: 1,
     auto_sync: autoSync ? 1 : 0,
+    auto_reuniao: autoReuniao ? 1 : 0,
     ultimo_erro: null,
   };
   if (existente) update('crm_integracoes', existente.id, payload);
@@ -191,4 +198,57 @@ export function sincronizarSeAutomatico(userId, companyId, company) {
       log('crm', `auto-sync ${provider} falhou para ${company?.name}: ${err.message}`)
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reuniao no CRM (agenda do Pipedrive, objeto Meeting do HubSpot, webhook)
+// ---------------------------------------------------------------------------
+
+/** Cria a reuniao num CRM especifico. Garante o contato/pessoa antes. */
+export async function agendarReuniaoNoCrm({ userId, companyId, company, reuniao, provider }) {
+  const row = one('SELECT * FROM crm_integracoes WHERE user_id=? AND provider=? AND ativo=1', userId, provider);
+  if (!row) throw new Error(`Integração com ${provider} não está ativa.`);
+  const adaptador = PROVEDORES[provider];
+  if (!adaptador.agendarReuniao) throw new Error(`${provider} não suporta agendamento.`);
+  const config = lerConfig(row);
+
+  // O HubSpot/Pipedrive precisam do id do contato para vincular a reuniao.
+  // Se o lead ainda nao foi pro CRM, manda agora.
+  let externalId = one(
+    'SELECT external_id FROM crm_sincronizacoes WHERE company_id=? AND provider=?',
+    companyId,
+    provider
+  )?.external_id;
+  if (!externalId && adaptador.enviarLead) {
+    const r = await enviarParaCrm({ userId, companyId, company, provider }).catch(() => null);
+    externalId = r?.external_id ?? null;
+  }
+
+  const r = await adaptador.agendarReuniao(config, company, reuniao, externalId);
+  update('crm_integracoes', row.id, { ultima_sincronizacao: nowIso(), ultimo_erro: null });
+  log('crm', `reunião de ${company?.name} criada no ${provider}.`);
+  return { ok: true, externalId: r.externalId ?? null, url: r.url ?? null };
+}
+
+/** Cria a reuniao em todos os CRMs do usuario com auto_reuniao ligado. */
+export async function agendarReuniaoEmTodos({ userId, companyId, company, reuniao }) {
+  if (!userId) return [];
+  const ativos = many(
+    'SELECT provider FROM crm_integracoes WHERE user_id=? AND ativo=1 AND auto_reuniao=1',
+    userId
+  );
+  const { registrarResultadoCrm } = await import('../reunioes.js');
+  const resultados = [];
+  for (const { provider } of ativos) {
+    try {
+      const r = await agendarReuniaoNoCrm({ userId, companyId, company, reuniao, provider });
+      registrarResultadoCrm(reuniao.id, provider, r);
+      resultados.push({ provider, ok: true });
+    } catch (err) {
+      registrarResultadoCrm(reuniao.id, provider, { ok: false });
+      log('crm', `auto-reunião ${provider} falhou para ${company?.name}: ${err.message}`);
+      resultados.push({ provider, ok: false, erro: err.message });
+    }
+  }
+  return resultados;
 }

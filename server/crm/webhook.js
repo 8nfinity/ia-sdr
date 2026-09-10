@@ -59,4 +59,29 @@ export const webhook = {
     // "update" depois, entao cada sincronizacao e um novo POST (esperado).
     return { externalId: null, url: null };
   },
+
+  async agendarReuniao({ url }, company, reuniao) {
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evento: 'reuniao_agendada',
+          origem: 'IA SDR',
+          quando: new Date().toISOString(),
+          lead: { nome: company.name, telefone: company.phone_e164, email: company.email },
+          reuniao: {
+            quando: reuniao.quando,
+            duracaoMin: reuniao.duracao_min,
+            titulo: reuniao.titulo,
+            notas: reuniao.notas,
+          },
+        }),
+      },
+      12000
+    );
+    if (!res.ok) throw new Error(`O endereco respondeu HTTP ${res.status}.`);
+    return { externalId: null, url: null };
+  },
 };

@@ -145,7 +145,16 @@ function gravarNoEnv(chave, valor) {
   }
 }
 
-// ─── 7. sobe o servidor e abre o navegador no endereco certo ─────────
+// ─── 7. restaura o banco de um backup remoto, se o container subiu vazio ──
+// Precisa acontecer ANTES do server/index.js, que abre o arquivo do banco.
+try {
+  const { restaurarSePrecisar } = await import('./server/persistencia.js');
+  await restaurarSePrecisar();
+} catch (err) {
+  console.error('  (persistencia) checagem de backup falhou: ' + (err?.message ?? err));
+}
+
+// ─── 8. sobe o servidor e abre o navegador no endereco certo ─────────
 try {
   await import('./server/index.js');
 

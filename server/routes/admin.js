@@ -9,6 +9,7 @@ import { listarUsuarios, buscarPorId, criarUsuario, trocarSenha, publico } from 
 import { log } from '../realtime.js';
 import { saldoTwilio, saldoAnthropicEstimado, registrarRecargaAnthropic } from '../saldo.js';
 import { PLANOS } from '../pagamentos/planos.js';
+import { statusBackup, enviarBackup } from '../persistencia.js';
 
 export const adminRouter = express.Router();
 
@@ -29,6 +30,22 @@ adminRouter.get(
   wrap(async (_req, res) => {
     const twilio = await saldoTwilio().catch((err) => ({ erro: err.message }));
     res.json({ twilio, anthropic: saldoAnthropicEstimado() });
+  })
+);
+
+/** Estado da persistência: volume + backup remoto (último e frequência). */
+adminRouter.get(
+  '/persistencia',
+  wrap(async (_req, res) => res.json(await statusBackup()))
+);
+
+/** Força um backup remoto agora (além dos automáticos). */
+adminRouter.post(
+  '/persistencia/backup',
+  wrap(async (_req, res) => {
+    db.exec('PRAGMA wal_checkpoint(FULL);');
+    await enviarBackup(fs.readFileSync(bancoEm), 'manual');
+    res.json(await statusBackup());
   })
 );
 

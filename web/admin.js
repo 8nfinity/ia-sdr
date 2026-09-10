@@ -305,5 +305,41 @@ $('#registrar-recarga').addEventListener('click', async () => {
   }
 });
 
+// ───────────────────────────────── persistência (backup remoto)
+async function carregarPersistencia() {
+  try {
+    const p = await api('/admin/persistencia');
+    const el = $('#backup-remoto-status');
+    if (!p.ativo) {
+      el.textContent =
+        'Backup remoto: DESLIGADO. Configure BACKUP_S3_* no .env para não perder dados se o volume falhar.';
+      return;
+    }
+    $('#backup-agora').hidden = false;
+    if (p.erro) {
+      el.textContent = 'Backup remoto: ligado, mas com erro — ' + p.erro;
+      return;
+    }
+    el.textContent = p.ultimo
+      ? `Backup remoto: ligado · ${p.total} cópias · último em ${new Date(p.ultimo).toLocaleString('pt-BR')} (a cada ${p.intervaloMin} min)`
+      : `Backup remoto: ligado · nenhuma cópia ainda (a cada ${p.intervaloMin} min)`;
+  } catch { /* rota indisponivel */ }
+}
+
+$('#backup-agora').addEventListener('click', async () => {
+  const btn = $('#backup-agora');
+  btn.disabled = true;
+  try {
+    await api('/admin/persistencia/backup', { method: 'POST' });
+    toast('Backup remoto enviado.');
+    carregarPersistencia();
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 carregar().catch((err) => toast(err.message, true));
 carregarSaldo();
+carregarPersistencia();

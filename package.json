@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
+    "aws4fetch": "^1.0.20",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "twilio": "^5.10.4",

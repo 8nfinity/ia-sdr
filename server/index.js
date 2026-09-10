@@ -1,10 +1,14 @@
 import express from 'express';
 import http from 'node:http';
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config, integrationStatus, voiceMode } from './config.js';
 import { attachRealtime, log } from './realtime.js';
+import {
+  diagnosticoPersistencia, backupRemotoAtivo, enviarBackup, intervaloBackupMs,
+} from './persistencia.js';
 import { apiRouter } from './routes/api.js';
 import { adminRouter } from './routes/admin.js';
 import { crmRouter } from './routes/crm.js';
@@ -12,7 +16,7 @@ import { pagamentosRouter } from './routes/pagamentos.js';
 import { webhooksMpRouter } from './routes/webhooks-mp.js';
 import { twimlRouter } from './voice/twiml.js';
 import { whatsappRouter } from './whatsapp/index.js';
-import { registrarUso, bancoEm, getSetting, definirDonoAtual } from './db.js';
+import { registrarUso, bancoEm, getSetting, definirDonoAtual, db } from './db.js';
 import { idDoUsuario } from './contexto.js';
 import { instalarAuth } from './auth.js';
 import { limitar } from './limites.js';
@@ -202,7 +206,39 @@ server.listen(config.port, () => {
     console.log('     pagamento aceita qualquer POST. Defina o secret do Console.');
   }
   console.log('');
+  diagnosticoPersistencia();
   log('sistema', 'servidor iniciado');
 });
+
+// ─── backup remoto do banco (protege contra container descartado no deploy) ──
+function bufferDoBanco() {
+  db.exec('PRAGMA wal_checkpoint(FULL);'); // junta o -wal no arquivo principal
+  return fs.readFileSync(bancoEm);
+}
+
+if (backupRemotoAtivo()) {
+  const timer = setInterval(() => {
+    enviarBackup(bufferDoBanco(), 'periodico').catch(() => {});
+  }, intervaloBackupMs());
+  timer.unref?.();
+}
+
+// A hospedagem manda SIGTERM antes de trocar o container: e a ultima janela
+// para salvar. Corre contra um teto de tempo para nao ser morto no meio.
+let encerrando = false;
+async function encerrarComBackup(sinal) {
+  if (encerrando) return;
+  encerrando = true;
+  log('sistema', `${sinal} recebido - encerrando.`);
+  if (backupRemotoAtivo()) {
+    await Promise.race([
+      enviarBackup(bufferDoBanco(), 'encerramento').catch(() => {}),
+      new Promise((r) => setTimeout(r, 12000)),
+    ]);
+  }
+  process.exit(0);
+}
+process.on('SIGTERM', () => encerrarComBackup('SIGTERM'));
+process.on('SIGINT', () => encerrarComBackup('SIGINT'));
 
 process.on('unhandledRejection', (err) => log('sistema', `promessa rejeitada: ${err?.message ?? err}`));

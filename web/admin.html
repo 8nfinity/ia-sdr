@@ -42,6 +42,10 @@
       <input type="file" id="arquivo-restaurar" accept=".db" hidden />
       <span class="summary">restaurar reinicia o servidor e substitui TODOS os dados atuais pelos do arquivo</span>
     </div>
+    <div class="detalhe-corpo" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;border-top:1px solid rgba(46,230,160,.1)">
+      <span id="backup-remoto-status" class="summary">verificando backup remoto…</span>
+      <button class="btn ghost sm" id="backup-agora" hidden>Fazer backup remoto agora</button>
+    </div>
   </div>
 
   <div class="box" style="margin-bottom:16px">

@@ -15,6 +15,7 @@ import { whatsappRouter } from './whatsapp/index.js';
 import { registrarUso, bancoEm, getSetting, definirDonoAtual } from './db.js';
 import { idDoUsuario } from './contexto.js';
 import { instalarAuth } from './auth.js';
+import { limitar } from './limites.js';
 import { contarUsuarios } from './usuarios.js';
 import { definirVendedorSalvo } from './config.js';
 import { registrarUsoCom } from './ai/claude.js';
@@ -32,11 +33,55 @@ definirVendedorSalvo(getSetting('agent_phone'));
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+app.disable('x-powered-by');
 app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: false })); // webhooks Twilio chegam como form
+app.use(express.urlencoded({ extended: false, limit: '512kb' })); // webhooks Twilio chegam como form
 
 // Atras de proxy (Nginx, Railway, Render) o IP real vem no cabecalho.
 app.set('trust proxy', 1);
+
+// Cabecalhos de seguranca (sem depender do helmet - sao poucos).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY'); // nao pode ser embutido em iframe (clickjacking)
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+  if (req.secure || req.get('x-forwarded-proto') === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  // CSP: o painel so carrega o que vem do proprio dominio + as fontes do
+  // Google e o SDK do Mercado Pago (checkout). connect-src inclui wss para o
+  // WebSocket do painel.
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+      "script-src 'self' https://sdk.mercadopago.com; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com; " +
+      "img-src 'self' data: https:; " +
+      "media-src 'self'; " +
+      "frame-src https://sdk.mercadopago.com https://*.mercadopago.com; " +
+      "connect-src 'self' https://api.mercadopago.com wss: ws:; " +
+      "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  );
+  next();
+});
+
+// Rate limit geral do painel (por IP). Nao pega webhooks (Twilio/Meta/MP
+// tem rajadas legitimas) nem os arquivos estaticos.
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/publico/')) return next(); // login/cadastro tem limite proprio
+  const { ok, retryS } = limitarApi(req.ip, req.method);
+  if (ok) return next();
+  res.set('Retry-After', String(retryS));
+  res.status(429).json({ error: `Muitas requisições. Tente de novo em ${retryS}s.` });
+});
+function limitarApi(ip, metodo) {
+  // Leituras: teto alto. Escritas: mais apertado (é onde dá pra abusar).
+  const escrita = metodo !== 'GET' && metodo !== 'HEAD';
+  return limitar(`api:${escrita ? 'w' : 'r'}:${ip}`, escrita ? 120 : 600, 60000);
+}
 
 /**
  * Descobre o proprio endereco publico na primeira visita.
@@ -49,14 +94,20 @@ app.set('trust proxy', 1);
  */
 app.use((req, _res, next) => {
   if (!config.publicBaseUrl) {
-    const host = req.get('x-forwarded-host') || req.get('host') || '';
+    const host = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
     const ehLocal = /^(localhost|127\.|0\.0\.0\.0|\[::1\]|192\.168\.|10\.)/.test(host);
-    if (host && !ehLocal) {
-      const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
-      config.publicBaseUrl = `${proto}://${host}`;
+    // So aceita um hostname bem formado (letras/numeros/hifen/ponto + porta
+    // opcional) e sob https. Sem isto, um "Host:" forjado na PRIMEIRA
+    // requisicao apos o deploy envenenaria a URL usada nos callbacks da
+    // Twilio e no retorno do Mercado Pago. O jeito 100% seguro e definir
+    // PUBLIC_BASE_URL nas variaveis de ambiente (tem prioridade sobre isto).
+    const hostValido = /^[a-z0-9.-]+(:\d{2,5})?$/i.test(host) && !host.includes('..');
+    const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+    if (host && !ehLocal && hostValido && proto === 'https') {
+      config.publicBaseUrl = `https://${host}`;
       log('sistema', `endereco publico detectado automaticamente: ${config.publicBaseUrl}`);
       console.log(`\n  Endereco publico detectado: ${config.publicBaseUrl}`);
-      console.log('  (para fixar, defina PUBLIC_BASE_URL nas variaveis de ambiente)\n');
+      console.log('  (para fixar/proteger, defina PUBLIC_BASE_URL nas variaveis de ambiente)\n');
     }
   }
   next();
@@ -137,6 +188,18 @@ server.listen(config.port, () => {
   if (config.publicBaseUrl) {
     console.log('');
     console.log('  Webhook WhatsApp: ' + config.publicBaseUrl + '/webhooks/whatsapp');
+  }
+  if (voiceMode() === 'twilio' && !config.twilio.validateSignature) {
+    console.log('');
+    console.log('  !! SEGURANCA: TWILIO_VALIDATE_SIGNATURE=false.');
+    console.log('     Sem isso, qualquer um pode forjar eventos de ligacao no /twiml.');
+    console.log('     Defina TWILIO_VALIDATE_SIGNATURE=true no .env (e confira que');
+    console.log('     PUBLIC_BASE_URL bate exatamente com o dominio publico).');
+  }
+  if (config.mercadopago.accessToken && !config.mercadopago.webhookSecret) {
+    console.log('');
+    console.log('  !! SEGURANCA: MERCADOPAGO_WEBHOOK_SECRET vazio - o webhook de');
+    console.log('     pagamento aceita qualquer POST. Defina o secret do Console.');
   }
   console.log('');
   log('sistema', 'servidor iniciado');

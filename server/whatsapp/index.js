@@ -12,10 +12,14 @@ import {
 const historyOf = (phone) =>
   many('SELECT * FROM messages WHERE phone=? ORDER BY created_at ASC LIMIT 40', phone);
 
-function record({ companyId, phone, direction, body, providerId, channel = 'whatsapp' }) {
+function record({ companyId, phone, direction, body, providerId, channel = 'whatsapp', userId }) {
   const row = {
     id: uid('msg_'),
     company_id: companyId ?? null,
+    // Sem userId, o dono é carimbado pelo contexto da sessão (insert()). O
+    // webhook de entrada NÃO tem sessão, então passa o dono da empresa
+    // explicitamente - senão a conversa fica "sem dono" e some do painel.
+    ...(userId ? { user_id: userId } : {}),
     phone,
     direction,
     channel,
@@ -23,8 +27,10 @@ function record({ companyId, phone, direction, body, providerId, channel = 'what
     provider_id: providerId ?? null,
     created_at: nowIso(),
   };
-  insert('messages', row);
-  emit('whatsapp:message', row);
+  const gravado = insert('messages', row);
+  // O webhook de entrada nao tem sessao: passa o dono explicito para o evento
+  // chegar ao painel do cliente certo (e so a ele).
+  emit('whatsapp:message', row, { userId: gravado.user_id ?? userId });
   return row;
 }
 
@@ -106,6 +112,7 @@ whatsappRouter.post('/', async (req, res) => {
     const company = companyByPhone(inbound.from);
     record({
       companyId: company?.id,
+      userId: company?.user_id,
       phone: inbound.from,
       direction: 'in',
       body: inbound.text,
@@ -132,7 +139,7 @@ whatsappRouter.post('/', async (req, res) => {
 
     const provider = currentProvider();
     const providerId = await provider.send(inbound.from, reply);
-    record({ companyId: company?.id, phone: inbound.from, direction: 'out', body: reply, providerId });
+    record({ companyId: company?.id, userId: company?.user_id, phone: inbound.from, direction: 'out', body: reply, providerId });
   } catch (err) {
     log('whatsapp', `erro no webhook: ${err.message}`);
   }

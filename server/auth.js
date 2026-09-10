@@ -10,6 +10,7 @@ import { getSetting, setSetting } from './db.js';
 import { autenticar, criarUsuario, buscarPorId, publico, contarUsuarios } from './usuarios.js';
 import { comUsuario } from './contexto.js';
 import { config } from './config.js';
+import { limitar, zerar } from './limites.js';
 
 const COOKIE = 'iasdr_sessao';
 const DIAS = 7;
@@ -23,23 +24,30 @@ function segredo() {
   return s;
 }
 
-const assinar = (userId, validoAte) => {
+// A assinatura inclui o "sal" do usuario. Como trocarSenha() gera um sal
+// novo, toda troca de senha (ou reset forcado pelo admin) invalida na hora
+// TODAS as sessoes antigas daquele usuario - o cookie roubado para de valer.
+const assinar = (userId, validoAte, sal) => {
   const dados = `${userId}.${validoAte}`;
-  const mac = crypto.createHmac('sha256', segredo()).update(dados).digest('hex');
+  const mac = crypto.createHmac('sha256', segredo()).update(`${dados}.${sal ?? ''}`).digest('hex');
   return `${dados}.${mac}`;
 };
 
-function lerToken(token) {
+/** Retorna o usuario da sessao (ja validado), ou null. */
+function usuarioDoToken(token) {
   if (!token) return null;
   const partes = token.split('.');
   if (partes.length !== 3) return null;
   const [userId, validoAte] = partes;
-  if (Number(validoAte) < Date.now()) return null;
+  if (!/^\d+$/.test(validoAte) || Number(validoAte) < Date.now()) return null;
 
-  const esperado = Buffer.from(assinar(userId, validoAte));
+  const u = buscarPorId(userId);
+  if (!u) return null;
+
+  const esperado = Buffer.from(assinar(userId, validoAte, u.sal));
   const recebido = Buffer.from(token);
   if (esperado.length !== recebido.length || !crypto.timingSafeEqual(esperado, recebido)) return null;
-  return userId;
+  return u;
 }
 
 const lerCookie = (req, nome) =>
@@ -50,39 +58,24 @@ const lerCookie = (req, nome) =>
 
 /** Usuário da requisição, ou null. */
 export function usuarioDaRequisicao(req) {
-  const id = lerToken(lerCookie(req, COOKIE));
-  if (!id) return null;
-  const u = buscarPorId(id);
+  const u = usuarioDoToken(lerCookie(req, COOKIE));
   return u && u.status === 'ativo' ? u : null;
 }
 
 export const temSessao = (req) => Boolean(usuarioDaRequisicao(req));
 
-function darCookie(res, req, userId) {
+function darCookie(res, req, usuario) {
   const validoAte = Date.now() + DIAS * 86400000;
   const seguro = req.secure || req.get('x-forwarded-proto') === 'https';
   res.setHeader(
     'Set-Cookie',
-    `${COOKIE}=${assinar(userId, validoAte)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DIAS * 86400}` +
+    `${COOKIE}=${assinar(usuario.id, validoAte, usuario.sal)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DIAS * 86400}` +
       (seguro ? '; Secure' : '')
   );
 }
 
-// Freio contra força bruta, por IP.
-const tentativas = new Map();
-const penalidade = (ip) => {
-  const t = tentativas.get(ip);
-  return t && Date.now() < t.ate ? Math.ceil((t.ate - Date.now()) / 1000) : 0;
-};
-function registrarErro(ip) {
-  const t = tentativas.get(ip) ?? { erros: 0, ate: 0 };
-  t.erros++;
-  if (t.erros >= 5) {
-    t.ate = Date.now() + Math.min(t.erros * 30000, 600000);
-    t.erros = 0;
-  }
-  tentativas.set(ip, t);
-}
+const MIN = 60000;
+const emailChave = (e) => 'login_email:' + String(e ?? '').trim().toLowerCase();
 
 export function instalarAuth(app) {
   // Quantas contas existem: a tela inicial usa para decidir entre
@@ -94,6 +87,11 @@ export function instalarAuth(app) {
 
   app.post('/api/publico/cadastro', (req, res) => {
     try {
+      // Cadastro tambem e rate-limited: sem isto, alguem cria centenas de
+      // contas em segundos (spam, ou pra sondar quais e-mails ja existem).
+      const rl = limitar('cadastro:' + req.ip, 5, 60 * MIN);
+      if (!rl.ok) return res.status(429).json({ error: `Muitas tentativas. Espere ${rl.retryS}s.` });
+
       // A primeira conta sempre pode ser criada (e vira admin). Depois disso,
       // o cadastro aberto e uma decisao consciente: sem ele, ninguem que achar
       // a URL abre conta e gasta o credito da API do dono.
@@ -102,7 +100,7 @@ export function instalarAuth(app) {
       }
       const { nome, email, senha } = req.body ?? {};
       const usuario = criarUsuario({ nome, email, senha, limiteUsd: config.limitePadraoUsd });
-      darCookie(res, req, usuario.id);
+      darCookie(res, req, usuario);
       res.json({ usuario: publico(usuario) });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -110,16 +108,21 @@ export function instalarAuth(app) {
   });
 
   app.post('/api/publico/login', (req, res) => {
-    const espera = penalidade(req.ip);
-    if (espera) return res.status(429).json({ error: `Muitas tentativas. Espere ${espera}s.` });
+    // Dois freios: por IP (contra varredura) e por e-mail (contra forca bruta
+    // distribuida em varios IPs contra UMA conta). Conta so as tentativas
+    // erradas; o acerto zera os dois.
+    const porIp = limitar('login_ip:' + req.ip, 15, 10 * MIN);
+    if (!porIp.ok) return res.status(429).json({ error: `Muitas tentativas. Espere ${porIp.retryS}s.` });
+    const chaveEmail = emailChave(req.body?.email);
+    const porEmail = limitar(chaveEmail, 8, 15 * MIN);
+    if (!porEmail.ok) return res.status(429).json({ error: `Muitas tentativas nesta conta. Espere ${porEmail.retryS}s.` });
 
     try {
       const usuario = autenticar(req.body?.email, req.body?.senha);
-      if (!usuario) {
-        registrarErro(req.ip);
-        return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
-      }
-      darCookie(res, req, usuario.id);
+      if (!usuario) return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+      zerar('login_ip:' + req.ip);
+      zerar(chaveEmail);
+      darCookie(res, req, usuario);
       res.json({ usuario: publico(usuario) });
     } catch (err) {
       res.status(403).json({ error: err.message });

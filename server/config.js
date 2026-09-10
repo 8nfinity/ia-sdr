@@ -42,7 +42,11 @@ export const config = {
     accountSid: process.env.TWILIO_ACCOUNT_SID || '',
     authToken: process.env.TWILIO_AUTH_TOKEN || '',
     from: process.env.TWILIO_PHONE_NUMBER || '',
-    validateSignature: bool(process.env.TWILIO_VALIDATE_SIGNATURE, false),
+    // Liga por padrao: sem validar a assinatura, qualquer um pode POSTar em
+    // /twiml/* fingindo ser a Twilio e mexer no estado das ligacoes. So
+    // desligue (=false) para depurar, e confira que PUBLIC_BASE_URL bate
+    // EXATAMENTE com o dominio publico (inclusive https, sem barra no fim).
+    validateSignature: bool(process.env.TWILIO_VALIDATE_SIGNATURE, true),
     // Service SID do Twilio Conversational Intelligence (console.twilio.com >
     // Voice > Intelligence > Create Service). Sem isso a ligacao ainda e
     // gravada, mas nao ha transcricao/resumo automatico - so o audio.

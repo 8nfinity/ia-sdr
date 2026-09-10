@@ -35,7 +35,12 @@ export async function onRecordingStatus(callId, body) {
   if (call.recording_sid === body.RecordingSid) return;
 
   const recordingSid = body.RecordingSid;
-  const recordingUrl = body.RecordingUrl ? `${body.RecordingUrl}.mp3` : null;
+  // Defesa em profundidade: so guarda URL da propria Twilio, mesmo que a
+  // assinatura do webhook ja tenha sido validada. O proxy de download em
+  // api.js confere de novo antes de buscar.
+  const base = String(body.RecordingUrl ?? '');
+  const recordingUrl = /^https:\/\/api\.twilio\.com\//.test(base) ? `${base}.mp3` : null;
+  if (base && !recordingUrl) log('telefonia', `URL de gravacao suspeita ignorada: ${base}`);
   if (body.RecordingStatus && body.RecordingStatus !== 'completed') {
     log('telefonia', `gravacao ${recordingSid ?? ''}: status ${body.RecordingStatus}`);
     return;

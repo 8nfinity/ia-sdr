@@ -1,6 +1,6 @@
 import express from 'express';
-import { getCompany } from '../db.js';
 import { log } from '../realtime.js';
+import { minhaEmpresa } from '../guard.js';
 import {
   listarProvedores,
   integracoesDoUsuario,
@@ -17,8 +17,8 @@ export const crmRouter = express.Router();
 
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
-    log('api', `erro crm: ${err.message}`);
-    res.status(400).json({ error: err.message });
+    if (!err.status || err.status >= 500) log('api', `erro crm: ${err.message}`);
+    res.status(err.status || 400).json({ error: err.message });
   });
 
 crmRouter.get('/provedores', (_req, res) => res.json(listarProvedores()));
@@ -68,8 +68,7 @@ crmRouter.delete('/:provider', (req, res) => {
 crmRouter.post(
   '/enviar/:companyId',
   wrap(async (req, res) => {
-    const company = getCompany(req.params.companyId);
-    if (!company) throw new Error('Lead não encontrado.');
+    const company = minhaEmpresa(req.params.companyId);
     const r = await enviarParaTodos({ userId: req.usuario.id, companyId: company.id, company });
     res.json({ resultados: r });
   })
@@ -78,8 +77,7 @@ crmRouter.post(
 crmRouter.post(
   '/enviar/:companyId/:provider',
   wrap(async (req, res) => {
-    const company = getCompany(req.params.companyId);
-    if (!company) throw new Error('Lead não encontrado.');
+    const company = minhaEmpresa(req.params.companyId);
     const r = await enviarParaCrm({
       userId: req.usuario.id,
       companyId: company.id,
@@ -90,6 +88,7 @@ crmRouter.post(
   })
 );
 
-crmRouter.get('/status/:companyId', (req, res) => {
+crmRouter.get('/status/:companyId', wrap(async (req, res) => {
+  minhaEmpresa(req.params.companyId);
   res.json(statusDeSincronizacao(req.params.companyId));
-});
+}));

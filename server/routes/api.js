@@ -11,15 +11,16 @@ import { startCampaign, engine } from '../voice/campaign.js';
 import { sendWhatsapp, historyOf, statusDaFila } from '../whatsapp/index.js';
 import { sincronizarSeAutomatico } from '../crm/index.js';
 import { conferirCotaBusca, conferirCotaLigacoes } from '../pagamentos/planos.js';
+import { minhaEmpresa, minhaBusca, minhaCampanha, minhaCall, minhaReuniao, urlDeGravacaoConfiavel } from '../guard.js';
 
 export const apiRouter = express.Router();
 
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
-    log('api', `erro: ${err.message}`);
+    if (!err.status || err.status >= 500) log('api', `erro: ${err.message}`);
     // err.dados carrega o "codigo" (ex: limite_plano) que o front usa para
     // oferecer a compra de créditos em vez de só mostrar um erro genérico.
-    res.status(400).json({ error: err.message, ...(err.dados || {}) });
+    res.status(err.status || 400).json({ error: err.message, ...(err.dados || {}) });
   });
 
 /**
@@ -92,6 +93,7 @@ apiRouter.post(
   wrap(async (req, res) => {
     const { companyId, quando, duracaoMin, titulo, notas } = req.body ?? {};
     if (!companyId) throw new Error('Lead não informado.');
+    minhaEmpresa(companyId);
     const reuniao = agendarReuniao({ userId: req.usuario.id, companyId, quando, duracaoMin, titulo, notas });
     res.json(reuniao);
   })
@@ -100,6 +102,7 @@ apiRouter.post(
 apiRouter.patch(
   '/reunioes/:id',
   wrap(async (req, res) => {
+    minhaReuniao(req.params.id);
     res.json(atualizarReuniao(req.params.id, req.body ?? {}));
   })
 );
@@ -220,13 +223,13 @@ apiRouter.get('/searches', (_req, res) => {
   res.json(many('SELECT * FROM searches WHERE 1=1' + f.sql + ' ORDER BY created_at DESC LIMIT 50', ...f.params));
 });
 
-apiRouter.get('/searches/:id', (req, res) => {
-  const search = one('SELECT * FROM searches WHERE id=?', req.params.id);
-  if (!search) return res.status(404).json({ error: 'busca nao encontrada' });
+apiRouter.get('/searches/:id', wrap(async (req, res) => {
+  const search = minhaBusca(req.params.id);
   res.json({ search, companies: listCompanies(req.params.id) });
-});
+}));
 
-apiRouter.get('/searches/:id/csv', (req, res) => {
+apiRouter.get('/searches/:id/csv', wrap(async (req, res) => {
+  minhaBusca(req.params.id);
   const rows = listCompanies(req.params.id);
   const head = ['nome', 'telefone', 'site', 'instagram', 'email', 'endereco', 'nota', 'avaliacoes', 'score', 'status'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -239,7 +242,7 @@ apiRouter.get('/searches/:id/csv', (req, res) => {
     ),
   ].join('\n');
   res.type('text/csv').attachment(`empresas-${req.params.id}.csv`).send(csv);
-});
+}));
 
 // --------------------------------------------------------------- campanhas
 apiRouter.post(
@@ -259,20 +262,20 @@ apiRouter.get('/campaigns', (_req, res) => {
   res.json(many('SELECT * FROM campaigns WHERE 1=1' + f.sql + ' ORDER BY created_at DESC LIMIT 30', ...f.params));
 });
 
-apiRouter.get('/campaigns/:id', (req, res) => {
-  const campaign = one('SELECT * FROM campaigns WHERE id=?', req.params.id);
-  if (!campaign) return res.status(404).json({ error: 'campanha nao encontrada' });
+apiRouter.get('/campaigns/:id', wrap(async (req, res) => {
+  const campaign = minhaCampanha(req.params.id);
   const calls = many('SELECT * FROM calls WHERE campaign_id=? ORDER BY created_at ASC', req.params.id).map((c) => ({
     ...c,
     company: getCompany(c.company_id),
     transcript: JSON.parse(c.transcript || '[]'),
   }));
   res.json({ campaign, calls });
-});
+}));
 
 apiRouter.post(
   '/campaigns/:id/stop',
   wrap(async (req, res) => {
+    minhaCampanha(req.params.id);
     await engine.stopCampaign(req.params.id);
     res.json({ ok: true });
   })
@@ -283,6 +286,7 @@ apiRouter.post(
   '/calls/:id/answer',
   wrap(async (req, res) => {
     if (voiceMode() === 'twilio') throw new Error('Disponivel apenas no modo simulacao.');
+    minhaCall(req.params.id);
     const instruction = await engine.onAnswered({ callId: req.params.id, answeredBy: 'human' });
     res.json(instruction);
   })
@@ -292,6 +296,7 @@ apiRouter.post(
   '/calls/:id/speech',
   wrap(async (req, res) => {
     if (voiceMode() === 'twilio') throw new Error('Disponivel apenas no modo simulacao.');
+    minhaCall(req.params.id);
     const instruction = await engine.onSpeech({ callId: req.params.id, speech: req.body?.speech ?? '' });
     res.json(instruction);
   })
@@ -301,16 +306,16 @@ apiRouter.post(
   '/calls/:id/accept-agent',
   wrap(async (req, res) => {
     if (voiceMode() === 'twilio') throw new Error('Disponivel apenas no modo simulacao.');
+    minhaCall(req.params.id);
     const instruction = await engine.onAgentAccept({ callId: req.params.id });
     res.json(instruction);
   })
 );
 
-apiRouter.get('/calls/:id', (req, res) => {
-  const call = one('SELECT * FROM calls WHERE id=?', req.params.id);
-  if (!call) return res.status(404).json({ error: 'ligacao nao encontrada' });
+apiRouter.get('/calls/:id', wrap(async (req, res) => {
+  const call = minhaCall(req.params.id);
   res.json({ ...call, company: getCompany(call.company_id), transcript: JSON.parse(call.transcript || '[]') });
-});
+}));
 
 // ------------------------------------------------- fila de discagem manual
 // Leads salvos que ainda nao foram trabalhados, do melhor score para o pior.
@@ -323,19 +328,25 @@ apiRouter.get('/leads', (_req, res) => {
         ...f.params
       );
     })(),
-    trabalhados: many(
-      `SELECT * FROM companies
-       WHERE status IN ('atendeu','nao atendeu','sem interesse','retornar','falando com humano')
-       ORDER BY created_at DESC LIMIT 50`
-    ),
+    trabalhados: (() => {
+      const f = filtroDoDono();
+      return many(
+        `SELECT * FROM companies
+         WHERE status IN ('atendeu','nao atendeu','sem interesse','retornar','falando com humano','reuniao')${f.sql}
+         ORDER BY created_at DESC LIMIT 50`,
+        ...f.params
+      );
+    })(),
   });
 });
 
 // Mailing pronto para importar em discador de mercado (3C Plus, Olos, Callix...).
 // formato=telefones devolve um numero por linha, que todo discador aceita.
 apiRouter.get('/leads/csv', (req, res) => {
+  const f = filtroDoDono();
   const leads = many(
-    "SELECT * FROM companies WHERE status IN ('lead','retornar') ORDER BY score DESC, name ASC"
+    `SELECT * FROM companies WHERE status IN ('lead','retornar')${f.sql} ORDER BY score DESC, name ASC`,
+    ...f.params
   );
   // Discador brasileiro espera DDD + numero, sem +55 e sem pontuacao.
   const soDigitos = (t) => String(t ?? '').replace(/\D/g, '').replace(/^55/, '');
@@ -365,8 +376,7 @@ apiRouter.post(
   '/whatsapp/send',
   wrap(async (req, res) => {
     const { companyId, text, contexto } = req.body ?? {};
-    const company = getCompany(companyId);
-    if (!company) throw new Error('Empresa nao encontrada.');
+    const company = minhaEmpresa(companyId);
     const result = await sendWhatsapp({ company, text, contexto });
     res.json(result);
   })
@@ -375,25 +385,34 @@ apiRouter.post(
 apiRouter.get('/whatsapp/fila', (_req, res) => res.json(statusDaFila()));
 
 apiRouter.get('/whatsapp/threads', (_req, res) => {
+  const f = filtroDoDono();
   const rows = many(`
     SELECT phone,
            MAX(created_at) AS last_at,
            COUNT(*) AS total,
            (SELECT body FROM messages m2 WHERE m2.phone = m1.phone ORDER BY created_at DESC LIMIT 1) AS last_body,
            (SELECT company_id FROM messages m3 WHERE m3.phone = m1.phone AND company_id IS NOT NULL LIMIT 1) AS company_id
-    FROM messages m1 GROUP BY phone ORDER BY last_at DESC LIMIT 50
-  `);
+    FROM messages m1 WHERE 1=1${f.sql} GROUP BY phone ORDER BY last_at DESC LIMIT 50
+  `, ...f.params);
   res.json(rows.map((r) => ({ ...r, company: r.company_id ? getCompany(r.company_id) : null })));
 });
 
-apiRouter.get('/whatsapp/thread/:phone', (req, res) => {
+apiRouter.get('/whatsapp/thread/:phone', wrap(async (req, res) => {
+  const f = filtroDoDono();
+  const meu = one(
+    `SELECT 1 v FROM messages WHERE phone=?${f.sql} LIMIT 1`,
+    req.params.phone,
+    ...f.params
+  );
+  if (!meu) { const e = new Error('não encontrado'); e.status = 404; throw e; }
   res.json(historyOf(req.params.phone));
-});
+}));
 
 // --------------------------------------------------------------- empresas
 apiRouter.patch(
   '/companies/:id',
   wrap(async (req, res) => {
+    minhaEmpresa(req.params.id);
     const allowed = ['status', 'notes', 'phone_e164', 'instagram', 'website', 'email'];
     const patch = Object.fromEntries(Object.entries(req.body ?? {}).filter(([k]) => allowed.includes(k)));
     update('companies', req.params.id, patch);
@@ -419,11 +438,15 @@ apiRouter.patch(
 apiRouter.get(
   '/companies/:id/gravacao',
   wrap(async (req, res) => {
+    minhaEmpresa(req.params.id);
     const call = one(
       "SELECT recording_url FROM calls WHERE company_id=? AND recording_url IS NOT NULL ORDER BY created_at DESC LIMIT 1",
       req.params.id
     );
     if (!call?.recording_url) return res.status(404).json({ error: 'Sem gravação para esta empresa.' });
+    // SSRF: só busca URL da própria Twilio, nunca um endereço arbitrário que
+    // um webhook forjado tenha conseguido gravar no campo.
+    if (!urlDeGravacaoConfiavel(call.recording_url)) return res.status(400).json({ error: 'Gravação inválida.' });
 
     const token = Buffer.from(`${config.twilio.accountSid}:${config.twilio.authToken}`).toString('base64');
     const upstream = await fetch(call.recording_url, { headers: { Authorization: `Basic ${token}` } });

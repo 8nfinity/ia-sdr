@@ -48,11 +48,21 @@ export const contarUsuarios = () => one('SELECT COUNT(*) n FROM usuarios')?.n ??
 export const buscarPorEmail = (email) => one('SELECT * FROM usuarios WHERE email=?', normalizarEmail(email));
 export const buscarPorId = (id) => one('SELECT * FROM usuarios WHERE id=?', id);
 
+/** Regras minimas de senha - usadas no cadastro e na troca de senha. */
+export function validarSenha(senha, email = '') {
+  const s = String(senha ?? '');
+  if (s.length < 8) throw new Error('A senha precisa de pelo menos 8 caracteres.');
+  if (s.length > 200) throw new Error('Senha longa demais.');
+  const fracas = ['12345678', 'senha123', 'password', '123456789', 'qwertyui', 'iasdr123'];
+  if (fracas.includes(s.toLowerCase())) throw new Error('Essa senha e muito comum. Escolha outra.');
+  if (email && s.toLowerCase() === normalizarEmail(email)) throw new Error('A senha nao pode ser o proprio e-mail.');
+}
+
 export function criarUsuario({ nome, email, senha, papel, limiteUsd = null }) {
   const mail = normalizarEmail(email);
   if (!nome || nome.trim().length < 2) throw new Error('Informe seu nome.');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) throw new Error('E-mail invalido.');
-  if (!senha || String(senha).length < 6) throw new Error('A senha precisa de pelo menos 6 caracteres.');
+  validarSenha(senha, mail);
   if (buscarPorEmail(mail)) throw new Error('Ja existe uma conta com esse e-mail.');
 
   const sal = crypto.randomBytes(16).toString('hex');
@@ -92,7 +102,10 @@ export function autenticar(email, senha) {
 }
 
 export function trocarSenha(id, senhaNova) {
-  if (!senhaNova || String(senhaNova).length < 6) throw new Error('A senha precisa de pelo menos 6 caracteres.');
+  const u = buscarPorId(id);
+  validarSenha(senhaNova, u?.email);
+  // Sal novo => o HMAC da sessao muda => todos os cookies antigos deste
+  // usuario param de valer na hora (ver server/auth.js).
   const sal = crypto.randomBytes(16).toString('hex');
   update('usuarios', id, { sal, senha_hash: hash(senhaNova, sal) });
 }

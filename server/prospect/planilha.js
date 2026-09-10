@@ -47,7 +47,11 @@ function extrairDoZip(buffer, alvo) {
       const extraLocal = buffer.readUInt16LE(inicioLocal + 28);
       const inicioDados = inicioLocal + 30 + nomeLocal + extraLocal;
       const dados = buffer.subarray(inicioDados, inicioDados + tamComprimido);
-      return compressao === 0 ? dados : zlib.inflateRawSync(dados);
+      // maxOutputLength trava "zip bomb": um .xlsx minusculo cujo XML interno
+      // descomprime para gigabytes e derruba o processo por falta de memoria.
+      return compressao === 0
+        ? dados
+        : zlib.inflateRawSync(dados, { maxOutputLength: 80 * 1024 * 1024 });
     }
     ponteiro += 46 + tamNome + tamExtra + tamComentario;
   }

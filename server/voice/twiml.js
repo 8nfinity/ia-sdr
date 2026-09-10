@@ -4,6 +4,8 @@ import { config, voiceMode } from '../config.js';
 import { log } from '../realtime.js';
 import { engine } from './campaign.js';
 import { publicUrl } from './provider.js';
+import { one } from '../db.js';
+import { comUsuario } from '../contexto.js';
 import { hangupXml, sayHangupXml, talkXml, agentPromptXml, conferenceXml } from './twiml-builder.js';
 import { onRecordingStatus } from './gravacao.js';
 
@@ -14,12 +16,28 @@ function verifyTwilio(req, res, next) {
   if (!config.twilio.validateSignature || voiceMode() !== 'twilio') return next();
   const signature = req.get('X-Twilio-Signature');
   const url = publicUrl(req.originalUrl);
-  const valid = twilio.validateRequest(config.twilio.authToken, signature, url, req.body || {});
+  const valid = signature && twilio.validateRequest(config.twilio.authToken, signature, url, req.body || {});
   if (!valid) {
-    log('telefonia', `assinatura invalida em ${req.originalUrl}`);
+    // Loga a URL calculada: 90% das rejeicoes sao PUBLIC_BASE_URL diferente
+    // do dominio real (http x https, barra no fim, dominio antigo do tunel).
+    log('telefonia', `webhook Twilio rejeitado (assinatura invalida). URL usada na verificacao: ${url}`);
     return res.status(403).send('assinatura invalida');
   }
   next();
+}
+
+/**
+ * Roda o resto da requisicao no contexto do DONO da ligacao/campanha. Sem
+ * isto, os eventos que a Twilio dispara (atendeu, encerrou, gravou) sairiam
+ * "sem dono" e o painel do cliente nao os receberia - so o do admin.
+ */
+function comDonoDaLigacao(req, res, next) {
+  const { callId, campaignId } = req.params;
+  const dono = callId
+    ? one('SELECT user_id FROM calls WHERE id=?', callId)?.user_id
+    : one('SELECT user_id FROM campaigns WHERE id=?', campaignId)?.user_id;
+  if (!dono) return next();
+  comUsuario({ id: dono, papel: 'usuario' }, next);
 }
 
 const xml = (res, body) => res.type('text/xml').send(body);
@@ -52,7 +70,7 @@ function render(res, instruction, callId) {
 }
 
 // Empresa atendeu (a Twilio ja informa se foi humano ou caixa postal).
-twimlRouter.post('/answer/:callId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/answer/:callId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   const { callId } = req.params;
   try {
     const instruction = await engine.onAnswered({ callId, answeredBy: req.body?.AnsweredBy });
@@ -64,7 +82,7 @@ twimlRouter.post('/answer/:callId', verifyTwilio, async (req, res) => {
 });
 
 // Cada turno de fala da pessoa.
-twimlRouter.post('/turn/:callId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/turn/:callId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   const { callId } = req.params;
   try {
     const instruction = await engine.onSpeech({ callId, speech: req.body?.SpeechResult ?? '' });
@@ -76,20 +94,20 @@ twimlRouter.post('/turn/:callId', verifyTwilio, async (req, res) => {
 });
 
 // Modo direto: vendedor atendeu -> entra na sala e as empresas sao discadas.
-twimlRouter.post('/lobby/:campaignId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/lobby/:campaignId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   const instruction = await engine.onAgentReady({ campaignId: req.params.campaignId });
   render(res, instruction, req.params.campaignId);
 });
 
 // Vendedor humano atendeu -> briefing + tecla 1.
-twimlRouter.post('/agent/:callId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/agent/:callId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   const { callId } = req.params;
   const instruction = await engine.onAgentAnswered({ callId });
   render(res, instruction, callId);
 });
 
 // Vendedor apertou 1 -> entra na conferencia, IA sai.
-twimlRouter.post('/agent-accept/:callId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/agent-accept/:callId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   const { callId } = req.params;
   if (req.body?.Digits !== '1') return xml(res, sayHangupXml('Ok, nao vou transferir. Ate mais.'));
   const instruction = await engine.onAgentAccept({ callId });
@@ -97,12 +115,12 @@ twimlRouter.post('/agent-accept/:callId', verifyTwilio, async (req, res) => {
 });
 
 // Status das ligacoes.
-twimlRouter.post('/status/:callId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/status/:callId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   await engine.onStatus({ callId: req.params.callId, status: req.body?.CallStatus });
   res.sendStatus(204);
 });
 
-twimlRouter.post('/agent-status/:callId', verifyTwilio, (req, res) => {
+twimlRouter.post('/agent-status/:callId', verifyTwilio, comDonoDaLigacao, (req, res) => {
   log('telefonia', `perna do vendedor: ${req.body?.CallStatus}`);
   res.sendStatus(204);
 });
@@ -110,7 +128,7 @@ twimlRouter.post('/agent-status/:callId', verifyTwilio, (req, res) => {
 // A gravacao da ligacao vencedora terminou: guarda o audio e dispara a
 // transcricao (se configurada). Nunca falha a resposta por causa disso - a
 // gravacao ja aconteceu de qualquer forma, isso aqui e so contabilidade.
-twimlRouter.post('/recording-status/:callId', verifyTwilio, async (req, res) => {
+twimlRouter.post('/recording-status/:callId', verifyTwilio, comDonoDaLigacao, async (req, res) => {
   res.sendStatus(204);
   try {
     await onRecordingStatus(req.params.callId, req.body || {});

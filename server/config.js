@@ -5,6 +5,11 @@ const bool = (v, def = false) => {
   return ['1', 'true', 'yes', 'sim', 'on'].includes(String(v).toLowerCase());
 };
 const num = (v, def) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? def : Number(v));
+// Chaves/tokens colados num painel de hospedagem costumam trazer espaco,
+// quebra de linha ou aspas junto - isso ja quebrou o Turso (URL) e o
+// Mercado Pago (assinatura do webhook nunca batia) de formas dificeis de
+// enxergar no log. Toda credencial passa por aqui.
+const str = (v, def = '') => String(v ?? def).trim().replace(/^["']|["']$/g, '');
 
 export const config = {
   port: num(process.env.PORT, 3000),
@@ -14,10 +19,10 @@ export const config = {
   cadastroAberto: bool(process.env.CADASTRO_ABERTO, false),
   // Teto de gasto de quem se cadastra sozinho (vazio = sem teto).
   limitePadraoUsd: process.env.LIMITE_PADRAO_USD ? Number(process.env.LIMITE_PADRAO_USD) : null,
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
+  publicBaseUrl: str(process.env.PUBLIC_BASE_URL).replace(/\/+$/, ''),
 
   anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    apiKey: str(process.env.ANTHROPIC_API_KEY),
     model: process.env.ANTHROPIC_MODEL || 'claude-opus-5',
     // Cada tarefa pode usar um modelo diferente. Achar empresas de verdade na
     // web exige o modelo forte; conduzir a conversa e responder no WhatsApp
@@ -28,7 +33,7 @@ export const config = {
   },
 
   prospect: {
-    googleKey: process.env.GOOGLE_MAPS_API_KEY || '',
+    googleKey: str(process.env.GOOGLE_MAPS_API_KEY),
     source: process.env.PROSPECT_SOURCE || 'auto', // auto | places | claude
     // Repetir a mesma busca em poucos dias so gastaria de novo pelo mesmo
     // resultado: dentro desse prazo o sistema reaproveita o que ja tem.
@@ -39,9 +44,9 @@ export const config = {
   },
 
   twilio: {
-    accountSid: process.env.TWILIO_ACCOUNT_SID || '',
-    authToken: process.env.TWILIO_AUTH_TOKEN || '',
-    from: process.env.TWILIO_PHONE_NUMBER || '',
+    accountSid: str(process.env.TWILIO_ACCOUNT_SID),
+    authToken: str(process.env.TWILIO_AUTH_TOKEN),
+    from: str(process.env.TWILIO_PHONE_NUMBER),
     // Liga por padrao: sem validar a assinatura, qualquer um pode POSTar em
     // /twiml/* fingindo ser a Twilio e mexer no estado das ligacoes. So
     // desligue (=false) para depurar, e confira que PUBLIC_BASE_URL bate
@@ -50,8 +55,8 @@ export const config = {
     // Service SID do Twilio Conversational Intelligence (console.twilio.com >
     // Voice > Intelligence > Create Service). Sem isso a ligacao ainda e
     // gravada, mas nao ha transcricao/resumo automatico - so o audio.
-    intelligenceSid: process.env.TWILIO_INTELLIGENCE_SID || '',
-    whatsappFrom: process.env.TWILIO_WHATSAPP_FROM || '',
+    intelligenceSid: str(process.env.TWILIO_INTELLIGENCE_SID),
+    whatsappFrom: str(process.env.TWILIO_WHATSAPP_FROM),
   },
 
   voice: {
@@ -93,13 +98,13 @@ export const config = {
     horaFim: num(process.env.WHATSAPP_HORA_FIM, 19),
     descansoDias: num(process.env.WHATSAPP_DESCANSO_DIAS, 30),
     meta: {
-      token: process.env.META_WA_TOKEN || '',
+      token: str(process.env.META_WA_TOKEN),
       phoneId: process.env.META_WA_PHONE_ID || '',
       verifyToken: process.env.META_WA_VERIFY_TOKEN || 'ia-sdr-verify',
     },
     evolution: {
       baseUrl: (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, ''),
-      apiKey: process.env.EVOLUTION_API_KEY || '',
+      apiKey: str(process.env.EVOLUTION_API_KEY),
       instance: process.env.EVOLUTION_INSTANCE || '',
     },
   },
@@ -111,13 +116,13 @@ export const config = {
   },
 
   mercadopago: {
-    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || '',
+    accessToken: str(process.env.MERCADOPAGO_ACCESS_TOKEN),
     // Publica de verdade: vai para o navegador (tokenizacao do cartao). Nunca
     // confundir com o accessToken acima, que e secreto.
-    publicKey: process.env.MERCADOPAGO_PUBLIC_KEY || '',
+    publicKey: str(process.env.MERCADOPAGO_PUBLIC_KEY),
     // Secret usado para validar a assinatura (x-signature) dos webhooks -
     // Console do Mercado Pago > Sua integracao > Webhooks > Chave secreta.
-    webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET || '',
+    webhookSecret: str(process.env.MERCADOPAGO_WEBHOOK_SECRET),
   },
 
   // Planos fixos (2 por enquanto). Preco em centavos de R$ para nao lidar com

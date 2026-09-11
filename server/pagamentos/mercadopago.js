@@ -94,19 +94,23 @@ export async function buscarPagamento(id) {
  * dizendo "esse pagamento foi aprovado" e ganhar créditos de graça.
  */
 export function validarWebhook({ xSignature, xRequestId, dataId }) {
-  if (!config.mercadopago.webhookSecret) return true; // sem secret configurado: pula (dev/sandbox)
-  if (!xSignature || !dataId) return false;
+  if (!config.mercadopago.webhookSecret) return { ok: true, motivo: 'sem secret configurado (pula validação)' };
+  if (!xSignature) return { ok: false, motivo: 'sem header x-signature' };
+  if (!dataId) return { ok: false, motivo: 'sem data.id (nem na query, nem no corpo)' };
 
   const partes = Object.fromEntries(
     xSignature.split(',').map((p) => p.trim().split('=').map((s) => s.trim()))
   );
   const ts = partes.ts;
   const hash = partes.v1;
-  if (!ts || !hash) return false;
+  if (!ts || !hash) return { ok: false, motivo: `x-signature sem "ts" ou "v1" (recebido: "${xSignature}")` };
 
   const template = `id:${dataId};request-id:${xRequestId ?? ''};ts:${ts};`;
   const calculado = crypto.createHmac('sha256', config.mercadopago.webhookSecret).update(template).digest('hex');
   const a = Buffer.from(calculado);
   const b = Buffer.from(hash);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const bate = a.length === b.length && crypto.timingSafeEqual(a, b);
+  return bate
+    ? { ok: true, motivo: 'assinatura confere' }
+    : { ok: false, motivo: 'hash não confere - confira se MERCADOPAGO_WEBHOOK_SECRET está exatamente igual ao do Console (sem espaço/aspas)' };
 }

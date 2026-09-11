@@ -102,13 +102,13 @@ webhooksMpRouter.post('/', async (req, res) => {
   const dataId = req.query['data.id'] || req.body?.data?.id || req.body?.id;
   const tipo = req.query.type || req.body?.type;
 
-  const valido = validarWebhook({
+  const validacao = validarWebhook({
     xSignature: req.get('x-signature'),
     xRequestId: req.get('x-request-id'),
     dataId: String(dataId ?? ''),
   });
-  if (!valido) {
-    log('pagamentos', 'webhook do Mercado Pago com assinatura inválida - recusado.');
+  if (!validacao.ok) {
+    log('pagamentos', `webhook do Mercado Pago recusado: ${validacao.motivo}`);
     return res.sendStatus(401);
   }
 

@@ -4,6 +4,7 @@
  * portugues o que fazer: versao do Node, dependencias, arquivo .env e porta.
  * Rode com: npm start
  */
+import './server/certs.js'; // define SSL_CERT_FILE se o container nao tiver trust store
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';

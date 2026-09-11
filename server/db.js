@@ -1,3 +1,4 @@
+import './certs.js'; // precisa vir antes do libsql (TLS com o Turso)
 import Database from 'libsql';
 import path from 'node:path';
 import fs from 'node:fs';

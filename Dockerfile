@@ -3,6 +3,13 @@
 # quebra. Alguns MB a mais de imagem, muito menos dor de cabeca.
 FROM node:24-slim
 
+# O libsql (Rust) usa o "trust store" do sistema para o TLS com o Turso, e a
+# imagem slim nao traz os certificados raiz. Sem isto: "TLS error: no valid
+# native root CA certificates found" e o servidor nao sobe.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Somente o package.json: o lock fica de fora de proposito, para o build nao

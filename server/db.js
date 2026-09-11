@@ -22,14 +22,51 @@ export const bancoEm = path.join(dataDir, 'iasdr.db');
  * o container e descartavel, o Turso guarda tudo.
  * Sem as variaveis, cai no SQLite local de sempre (dev, ou volume).
  */
-export const usandoTurso = Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
-export const db = usandoTurso
-  ? new Database(bancoEm, {
-      syncUrl: process.env.TURSO_DATABASE_URL,
-      authToken: process.env.TURSO_AUTH_TOKEN,
+// Limpa o que costuma vir grudado num "copiar e colar" na hospedagem:
+// espacos, quebra de linha, e aspas em volta. A URL nunca tem espaco.
+const limparEnv = (v) => String(v ?? '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+const tursoUrl = limparEnv(process.env.TURSO_DATABASE_URL);
+const tursoToken = String(process.env.TURSO_AUTH_TOKEN ?? '').trim().replace(/^["']|["']$/g, '');
+
+export const usandoTurso = Boolean(tursoUrl && tursoToken);
+
+if (usandoTurso && !/^(libsql|https?):\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(tursoUrl)) {
+  console.error('');
+  console.error('  ================================================================');
+  console.error('  TURSO_DATABASE_URL nao parece uma URL valida.');
+  console.error('  ================================================================');
+  console.error(`  Recebido: "${tursoUrl}"`);
+  console.error('');
+  console.error('  Tem que ser exatamente o que sai de:  turso db show <banco> --url');
+  console.error('  Formato: libsql://<algo>.turso.io   (sem espaco, sem aspas, sem token junto)');
+  console.error('  Na Railway, cole o valor puro no campo - ela nao precisa de aspas.');
+  console.error('');
+  process.exit(1);
+}
+
+function abrirBanco() {
+  if (!usandoTurso) return new Database(bancoEm);
+  try {
+    return new Database(bancoEm, {
+      syncUrl: tursoUrl,
+      authToken: tursoToken,
       syncInterval: 60, // segundos: puxa mudancas feitas por outros clientes/dashboard
-    })
-  : new Database(bancoEm);
+    });
+  } catch (err) {
+    console.error('');
+    console.error('  ================================================================');
+    console.error('  NAO CONSEGUI ABRIR A CONEXAO COM O TURSO.');
+    console.error('  ================================================================');
+    console.error(`  Erro: ${err.message}`);
+    console.error(`  URL usada: "${tursoUrl}"`);
+    console.error('');
+    console.error('  Confira TURSO_DATABASE_URL (turso db show <banco> --url) e o');
+    console.error('  TURSO_AUTH_TOKEN. Gere um token novo: turso db tokens create <banco>');
+    console.error('');
+    process.exit(1);
+  }
+}
+export const db = abrirBanco();
 
 // Puxa o estado atual do Turso ANTES de criar tabelas: numa replica novinha
 // (container recem-criado no deploy) e isso que traz de volta todos os dados.
